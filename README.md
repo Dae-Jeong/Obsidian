@@ -27,7 +27,7 @@ agent의 완료 보고와 검증 완료를 구분한다.
 
 `Obsidian + Orchestration`은 공통 입구의 이름이며 두 Git 저장소는 독립적으로 유지한다.
 Obsidian은 위키 구조를, [orchestration](orchestration/README.md)은 실행 모델과 도구를 소유한다.
-`orchestration/`은 `https://github.com/KimMarin/orchestration.git`을 연결한 Git submodule이다.
+`orchestration/`은 `https://github.com/Dae-Jeong/orchestration.git`을 연결한 Git submodule이다.
 부모 저장소에는 `.gitmodules`와 특정 child 커밋을 가리키는 gitlink만 기록한다.
 
 ```sh
@@ -39,7 +39,7 @@ git status --short
 git -C orchestration status --short
 ```
 
-private orchestration 원격의 기존 접근 권한이 필요하다. submodule 연결은 접근 권한을 변경하지 않는다.
+Dae-Jeong 소유 private orchestration 원격의 접근 권한이 필요하다. submodule 연결은 접근 권한을 변경하지 않는다.
 [child 진입 규칙](orchestration/AGENTS.md)을 먼저 읽고 실행 환경은 child 설치 가이드를 따른다.
 clone만으로 Orca 등록이나 실행 환경이 구성되지는 않는다.
 
