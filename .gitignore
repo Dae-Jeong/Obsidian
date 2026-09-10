@@ -17,3 +17,16 @@
 # 임시 파일
 *.tmp
 .trash/
+
+# Personal LLM Wiki content stays local.
+/Home.md
+/Sources.md
+/Projects/
+/Results/
+/Tasks/
+/Inbox/
+/AGENTS.local.md
+/Knowledge/
+/Catalog/
+/.local/
+__pycache__/
