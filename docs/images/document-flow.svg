@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1020" viewBox="0 0 1400 1020" role="img" aria-labelledby="title desc">
+<title id="title">LLM Wiki 문서 구조와 적재 흐름</title><desc id="desc">원문 확인, 보존 이관, 검증과 정본 전환을 거쳐 Wiki와 제품별 Operations에 기록한다. LLM은 관리하고 사용자는 Obsidian에서 열람한다. 제품 실행은 Paperclip, Orca, 제품 repository와 연결한다.</desc>
+<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto-start-reverse"><path d="M1 1L7 4L1 7" fill="none" stroke="#637e8a" stroke-width="1.5"/></marker></defs>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;fill:#18343f;font-size:18px}.muted{fill:#58717c;font-size:16px}.label{fill:#58717c;font-size:14px;letter-spacing:1px}.heading{font-size:24px;font-weight:700}.strong{font-size:19px;font-weight:650}.node{fill:#fff;stroke:#bdcfd6;stroke-width:1.5}.line{fill:none;stroke:#637e8a;stroke-width:1.7;marker-end:url(#arrow)}.dashed{stroke-dasharray:6 5}.wiki{fill:#eff7f4;stroke:#78a998;stroke-width:1.5}.ops{fill:#eff4fa;stroke:#859fbd;stroke-width:1.5}</style>
+<rect width="1400" height="1020" fill="#f5f7f9"/>
+<text x="48" y="44" class="label">LLM WIKI / DOCUMENT MODEL</text>
+<text x="48" y="85" style="font-size:32px;font-weight:750">문서는 한 곳에, 지식과 업무는 각자의 자리로</text>
+<text x="48" y="118" class="muted">LLM이 읽고 정리·수정하고, 사용자는 Obsidian에서 원문과 결과를 확인합니다.</text>
+<text x="48" y="168" class="label">01  자료 적재 · 확인한 범위만 기록</text>
+<g>
+<rect x="48" y="190" width="270" height="106" rx="10" class="node"/>
+<text x="68" y="223" class="strong">기존 자료 · 새 업무</text><text x="68" y="253">위키 · 노트 · 경력 근거</text><text x="68" y="278" class="muted">제품 아이디어 · 작업 결과</text>
+<path d="M318 243H361" class="line"/>
+<rect x="370" y="190" width="280" height="106" rx="10" class="node"/>
+<text x="390" y="223" class="strong">읽기 · 분류</text><text x="390" y="253">기존 정본 · 출처 · 맥락 확인</text><text x="390" y="278" class="muted">지식 / 업무 / 원문 / repo 구분</text>
+<path d="M650 243H693" class="line"/>
+<rect x="702" y="190" width="280" height="106" rx="10" class="node"/>
+<text x="722" y="223" class="strong">보존 · 적재</text><text x="722" y="253">원본 백업 → 본문·첨부 이관</text><text x="722" y="278" class="muted">기존 구조 · 날짜 · 이력 유지</text>
+<path d="M982 243H1025" class="line"/>
+<rect x="1034" y="190" width="318" height="106" rx="10" class="node"/>
+<text x="1054" y="223" class="strong">검증 · 정본 전환</text><text x="1054" y="253">hash · 링크 확인 → 경로 갱신</text><text x="1054" y="278" class="muted">미확인은 남기고 원본은 보존</text>
+</g>
+<path d="M1193 296V329H700V359" class="line"/>
+<text x="48" y="343" class="label">02  OBSIDIAN VAULT · 실제 문서와 첨부를 보유하는 정본</text>
+<rect x="48" y="366" width="1304" height="398" rx="16" fill="#fff" stroke="#bdcfd6" stroke-width="1.5"/>
+<text x="72" y="401" class="strong">README → _map → 해당 지식·제품 문서</text>
+<text x="830" y="401" class="muted">정본 한 곳 편집 · 다른 문서는 링크로 연결</text>
+<rect x="72" y="426" width="564" height="310" rx="12" class="wiki"/>
+<text x="96" y="462" class="heading">Wiki / 지식 SSOT</text>
+<text x="96" y="493" class="muted">원문을 보존하고, 읽은 근거로 재사용 지식을 정리</text>
+<rect x="96" y="513" width="516" height="69" rx="7" fill="#fff" stroke="#c1d8ce"/>
+<text x="114" y="540" class="strong">sources/</text><text x="114" y="565" class="muted">기존 원문 · 첨부 · 장기 기억 · 경력 사실과 근거</text>
+<path d="M354 582V624" class="line"/><text x="375" y="609" class="muted">원문 연결 · 읽은 범위 명시</text>
+<text x="96" y="649" class="strong">reference/ · knowledge/</text>
+<text x="96" y="678" class="strong">projects/ · opensource/ · meta/</text>
+<text x="96" y="712" class="muted">출처 · 확인 날짜 · 근거와 해석 · 검증 한계</text>
+<rect x="764" y="426" width="564" height="310" rx="12" class="ops"/>
+<text x="788" y="462" class="heading">Operations / 제품별 업무</text>
+<text x="788" y="493" class="muted">제품 → 문서 역할 순서로 범위·승인·결과를 관리</text>
+<text x="788" y="534" class="strong">&lt;product&gt;/index.md</text>
+<path d="M804 548V678M804 570H832M804 621H832M804 672H832" fill="none" stroke="#859fbd" stroke-width="1.5"/>
+<text x="846" y="576">ideas/ <tspan class="muted">미확정 아이디어</tspan></text>
+<text x="846" y="627">tasks/ <tspan class="muted">범위 · 승인 · 설계 · 검수 근거</tspan></text>
+<text x="846" y="678">reviews/ <tspan class="muted">결과 · 증거 · 남은 한계</tspan></text>
+<text x="788" y="712" class="muted">완료 후에도 task ID · 경로 · 승인 이력 유지</text>
+<path d="M636 548H755" class="line"/><text x="661" y="533" class="muted">근거</text>
+<path d="M764 663H645" class="line"/><text x="648" y="690" class="muted">재사용 지식</text>
+<path d="M1050 764V820" class="line" marker-start="url(#arrow)"/>
+<text x="1070" y="797" class="muted">관리 agent가 연결·검수 후 갱신</text>
+<text x="48" y="803" class="label">03  실행 연결 · 각 도구의 소유권 유지</text>
+<rect x="48" y="831" width="404" height="98" rx="10" class="node"/>
+<text x="70" y="864" class="strong">Paperclip / 업무판</text><text x="70" y="895" class="muted">issue ID · 담당 · 우선순위 · 상태 · blocker</text>
+<rect x="474" y="831" width="404" height="98" rx="10" class="node"/>
+<text x="496" y="864" class="strong">Orca / 실행 시도</text><text x="496" y="895" class="muted">실제 session · Run · Dispatch · 질문과 보고</text>
+<rect x="900" y="831" width="452" height="98" rx="10" class="node"/>
+<text x="922" y="864" class="strong">제품 repository / 구현 원본</text><text x="922" y="895" class="muted">코드 · 구현 계약 · 운영 문서 · 서버 · 원시 증거</text>
+<path d="M250 831V820H1126V831M676 831V820" fill="none" stroke="#637e8a" stroke-width="1.5"/>
+<text x="48" y="969" class="muted">문서 상태는 실제 실행의 증명이 아닙니다. 자동 업무 생성·자동 상태 동기화·클라우드 동기화는 미구성입니다.</text>
+<text x="48" y="996" class="label">2026-09-11 · README / _map / Operations 운영 규칙 기반 · 경로는 현재 실제 이름 기준</text>
+</svg>

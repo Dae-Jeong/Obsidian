@@ -1,10 +1,12 @@
 # LLM Wiki Agent Entry
 
-1. Read the operator's machine-wide AGENTS.md and its canonical global agent wiki first when available. They own machine-wide rules; machine-specific paths belong in local files.
-2. Read `README.md`, then local `Home.md` and `Sources.md` when available.
-3. Read the relevant project page and follow its source links before making factual claims. Read that project's AGENTS.md before operating there.
-4. Keep personal material in the Git-ignored local paths listed in README. Never force-add or publish it as part of routine work.
-5. Update an existing project/result page before creating a duplicate. Every result needs source links, a checked date, verification status, and limits. Link canonical decisions and feedback in basic-memory rather than creating competing owners.
-6. Execute work through the existing orchestration entry. Wiki prose does not prove runtime state or authorize infrastructure changes.
-7. Catalog entries prove a document was inventoried, not that its content was verified. Knowledge pages must identify which original documents were actually reviewed and retain their uncertainty and dates.
-8. `orchestration/` is an independent Git submodule. Read `orchestration/AGENTS.md` and its README before operating there; follow this vault's README to initialize it. Commit child changes in the child repository and record only its verified commit in the parent. Preserve separate external checkouts and their uncommitted work.
+1. Read `/Users/marin/AGENTS.md`, then `Wiki/meta/agents/README.md` and its `_map.md`. Machine-local paths stay in machine or project files; global behavior stays in the global agent wiki.
+2. Read this `README.md`, `_map.md`, and the relevant `Operations/<product>/index.md` before making project claims. Follow source links and read the target project's nearest `AGENTS.md` before operating there.
+3. `Wiki/` and `Operations/` are canonical. The former root `SoT/`, `Projects/`, `Tasks/`, `Results/`, `Knowledge/`, `Inbox/`, and `Catalog/` paths were retired on 2026-09-11; use the direct current owner recorded in `_map.md`.
+4. Preserve original structure, body, attachments, links, dates, approval/failure history, and uncertainty. Copy and hash-verify before switching an owner or compatibility facade; an index or summary is not a substitute for migration.
+5. Keep personal material in the Git-ignored local paths described by `README.md`. Never force-add or publish it during routine work. `Wiki/meta/catalog/` proves inventory only; it does not prove content was read, verified, or current.
+6. Product task IDs and filenames remain stable in `Operations/<product>/tasks/`; completed work stays at the same path. Update an existing task, review, or product index before creating a duplicate.
+7. Paperclip owns issue status, assignee, priority, and blockers; Orca owns execution attempts; repositories own code, implemented contracts, servers, and raw evidence. There is no automatic issue or document sync, and Wiki prose or a worker report does not prove runtime state or authorize infrastructure changes.
+8. Every review/result records source links, checked date, verification status, limits, and remaining work. Never promote historical records or file-copy checks to current factual verification.
+9. `orchestration/` is an independent Git submodule. Read its `AGENTS.md` and `README.md`; do not modify its Git state from this vault migration. Commit child changes in the child repository and record only a verified child commit in the parent; preserve separate external checkouts and their dirty work.
+10. `_map.md` owns canonical locations; `Operations/llm-wiki/index.md` routes current work, and its linked tasks/reviews own migration scope, verification limits, and remaining work. The migrated `Wiki/sources/basic-memory/` remains the logical owner of durable decisions and feedback; source archives are not automatically curated or OKF-conformant.
