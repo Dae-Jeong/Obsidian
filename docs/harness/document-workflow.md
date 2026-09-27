@@ -103,7 +103,22 @@ role metadata and invalid review dates. Optional template sections can be omitte
 Without a file it covers current Notes and Projects; an individual Log may be
 checked explicitly. Unknown Note purposes require classification rather than a
 silent fallback. Global enforcement requires `document_contract: 1` in the registry;
-this machine has not enabled it because existing documents need reviewed adoption.
+this machine enables it after current Notes and Projects passed reviewed role adoption
+and the complete structure check. The ordinary check now includes role validation.
+This setting does not certify factual freshness or include original Sources and Log
+in current-document template enforcement.
+
+## Checkpoint Coordination
+
+Checkpoint commands use a POSIX advisory lock at `.local/harness/checkpoint.lock`;
+a concurrent checkpoint fails explicitly and can be retried after the first finishes.
+Before advancing an existing baseline, the command snapshots and verifies the full
+bytes of new or changed current files included in that baseline. A preservation
+failure or detected corpus drift leaves the old checkpoint in place. An unchanged
+checkpoint creates no additional snapshot. Initialization remains a distinct first
+setup operation. This protects intermediate baseline bytes when another session
+continues editing; it does not freeze arbitrary filesystem writers, identify which
+session caused every change, or implement atomic multi-file publication.
 
 ## Document Register
 

@@ -55,7 +55,7 @@ Note의 네 가지 목적은 `subject_type`으로 구분합니다. 새 분류 �
 | `evidence` | Task의 실제 근거 경로·URL 목록. done에는 근거가 필요 |
 | `recorded` | Log 작성 날짜. 실행 시각이나 사실 검증 날짜와 구분 |
 
-`verification`은 이 템플릿의 작성 어휘이며 기존 전체 문서의 열거형으로 자동 강제하지 않습니다. unverified는 근거 대조 전, partial은 일부 확인·실패·미해결이 남은 상태, verified는 선언한 범위 전체에 대한 검증 완료를 뜻합니다. Review의 개별 행은 pass, fail, unverified, not-applicable을 사용하고 not-applicable에는 이유를 씁니다. 날짜 하나로 문서 전체의 최신성을 인증하지 않습니다.
+`verification`은 Note와 Review에서 unverified·partial·verified를 사용하며 역할 구조 검사로 확인합니다. unverified는 근거 대조 전, partial은 일부 확인·실패·미해결이 남은 상태, verified는 선언한 범위 전체에 대한 검증 완료를 뜻합니다. Task·index 등 다른 역할의 상태 어휘와 혼동하지 않습니다. Review의 개별 행은 pass, fail, unverified, not-applicable을 사용하고 not-applicable에는 이유를 씁니다. 날짜 하나로 문서 전체의 최신성을 인증하지 않습니다.
 
 blocked Task에는 `blocker`와 `unblock_condition`을 추가합니다. 실제 선행 Task가 있을 때만 `depends_on`에 존재하는 Task ID를 기록합니다. 빈 선택 필드를 미리 늘리지 않습니다.
 
@@ -80,7 +80,7 @@ blocked Task에는 `blocker`와 `unblock_condition`을 추가합니다. 실제 �
 5. 근거를 실제 확인한 범위만 기록합니다. 템플릿의 `checked: null`은 미확인 표시입니다. 현 Task 검사는 실제 날짜를 요구하므로 Task를 관리 문서로 등록하기 전에 현재 작업 상태와 범위를 확인해야 합니다. 이는 제품 완료 검증과 다릅니다.
 6. 편집 전 보존, 검사와 checkpoint는 [공통 작업 규약](../../wiki/notes/agents/work-management-policy.md)을 따릅니다.
 
-기존 `harness check`는 Task 필드·상태·기본 섹션·blocker·완료 증거·의존성 등을 검사합니다. 이 문서의 모든 작성 기준과 Note별 섹션을 자동 검사하는 것은 아닙니다. `uv run python -m harness structure [문서경로]`는 템플릿의 필수 항목·Note 목적·날짜·미입력 변수·작성 주석을 검사합니다. 조건부 섹션은 생략할 수 있습니다. 경로를 생략하면 현재 Notes·Projects 전체를 검사하고, 명시한 Log 문서도 검사할 수 있습니다. 역할 템플릿 대상이 아닌 단일 파일은 적용 범위 오류를 반환합니다. `.local/harness/projects.json`의 `document_contract: 1`은 이를 일반 check에 통합하는 설정입니다. 현재 corpus에는 활성화하지 않았으며, 문서별 의미 검토와 형식 적용 후 전체 structure 검사를 통과해야 활성화할 수 있습니다. 자동 검사는 필드·유형·링크·항목 누락을 다루고, 근거의 적합성·사실의 최신성은 실제 내용 대조로 확인합니다.
+`harness check`는 Task 필드·상태·blocker·완료 증거·의존성 등을 검사합니다. `uv run python -m harness structure [문서경로]`는 템플릿의 필수 항목·Note 목적·날짜·미입력 변수·작성 주석을 검사합니다. 조건부 섹션은 생략할 수 있습니다. 경로를 생략하면 현재 Notes·Projects 전체를 검사하고, 명시한 Log 문서도 검사할 수 있습니다. 역할 템플릿 대상이 아닌 단일 파일은 적용 범위 오류를 반환합니다. 현재 Notes·Projects의 역할 적용과 전체 structure 검사를 마쳐 `.local/harness/projects.json`의 `document_contract: 1`을 활성화했습니다. 일반 `check`도 역할 구조 오류를 실패로 반환합니다. 원본 Sources·Log에 현재 문서 형식을 일괄 강제하지 않습니다. 자동 검사는 필드·유형·링크·항목 누락을 다루고, 근거의 적합성·사실의 최신성은 실제 내용 대조로 확인합니다.
 
 ## 조사 근거와 적용 판단
 

@@ -68,9 +68,11 @@ uv run python -m harness.install_hooks
 
 명시적 편집 도구의 보존 누락·명명 오류·미완료 편집 충돌은 사전 차단 대상입니다. 등록 프로젝트의 shell 실행 등에서 중앙 Markdown 변화가 감지되면 사후와 종료 검사로 보존 위반을 찾습니다. **임의 shell·MCP·외부 편집기의 모든 쓰기를 사전 차단하는 시스템은 아닙니다.** 훅 미실행·미신뢰·실행 파일 부재·런타임 시간 초과도 OS 수준에서 막지 못합니다.
 
-현재 check와 fingerprint의 내용 검사 범위는 current Markdown입니다. HTML·YAML·JSON의 명시적 편집도 snapshot은 요구하지만 내용·검색·checkpoint까지 완전히 검사하지 않습니다. 다른 세션의 변화를 관측할 수 있으므로 자기 작업 증거로 자동 귀속하지 않습니다. Task의 실제 갱신·완료 근거와 최신성은 내용 검토를 유지합니다.
+check의 문서 구조·링크 검사 대상은 current Markdown입니다. fingerprint와 checkpoint의 해시 보존 대상은 현재 영역의 HTML·YAML·JSON 부속 파일 및 등록한 Dae-Jeong 도메인도 포함합니다. 이것이 각 형식의 내용·도메인 스키마 검증이나 현재 검색 포함을 뜻하지는 않습니다. 다른 세션의 변화를 관측할 수 있으므로 자기 작업 증거로 자동 귀속하지 않습니다. Task의 실제 갱신·완료 근거와 최신성은 내용 검토를 유지합니다.
 
-남은 구현은 활성 도메인·부속 형식의 관리 범위, 구조화된 후보 적용 명령, checkpoint 전진과 writer 간 원자적 동기화, 실행 상태 손실 복구입니다. pending과 예상 상태 확인은 완전한 다중 파일 트랜잭션이나 외부 writer 잠금이 아닙니다.
+checkpoint 명령끼리는 POSIX lock으로 동시 실행을 막고, 새 기준에 들어가는 변경·신규 파일의 전체 bytes를 보존·검증한 뒤 기준을 전진시킵니다. 다른 세션이 중간 상태를 기준에 포함해도 해당 bytes가 Log에 남습니다. 편집 도구는 여전히 직전 현재 bytes의 보존 여부를 확인합니다.
+
+남은 구현은 활성 도메인의 검색·편집 경계와 형식별 내용 검증, 구조화된 후보 적용 명령, 전체 writer와 게시의 원자적 동기화, 실행 상태 손실 복구입니다. pending과 checkpoint 명령 잠금은 다중 파일 트랜잭션이나 임의 외부 writer 잠금이 아닙니다. 전역 revision 변화만으로 실제 변경 세션을 식별할 수도 없습니다.
 
 설치·네이티브 실행·미확인 범위는 [구현 증거](../../wiki/log/20260927T041642Z-2b3230c3/README.md), 전체 수용은 [기존 Task](../../wiki/projects/llm-wiki/tasks/shared-task-harness.md)가 소유합니다.
 

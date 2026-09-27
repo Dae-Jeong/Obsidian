@@ -33,7 +33,7 @@ flowchart TB
     Local --> Derived[SQLite: 재생성 가능한 검색 인덱스]
 ```
 
-Wiki는 내용과 작업 상태를, docs는 이를 관리하는 도구의 사용·운영 설명을 담당합니다. 하네스는 보존부터 검사·인수·검색까지 연결한 실행 체계이며, 스크립트는 이를 구현하는 코드입니다. `.local` 전체를 삭제 가능한 캐시로 취급하지 않습니다.
+Wiki는 내용과 작업 상태를, docs는 이를 관리하는 도구의 사용·운영 설명을 담당합니다. 하네스는 보존부터 검사·인수·검색까지 연결한 실행 체계이며, 스크립트는 이를 구현하는 코드입니다. `.local` 전체를 삭제 가능한 캐시로 취급하지 않습니다. `hook-state.sqlite`도 미완료 편집과 세션 검증을 추적하는 필수 상태이며, 재생성 가능한 SQLite는 문서 검색 색인입니다.
 
 제품 코드·실행 계약·원시 실행 증거는 각 제품 저장소가 소유합니다. 중앙 Task는 그 증거를 연결합니다. 독립 `orchestration/` 저장소와 루트 계약의 명시적 제외 경로는 이 관리 흐름의 대상이 아닙니다.
 
@@ -169,7 +169,8 @@ flowchart TD
 | snapshot·해시 검증·check·checkpoint·검색 | 실행 명령이 제공됩니다. check 성공이 내용의 정확성을 보장하지는 않습니다 |
 | checkpoint 누락·손상 | 정상 check와 checkpoint가 오류로 종료합니다. 최초 설정만 명시적 initialize를 사용합니다 |
 | 중단 이관·정본 부재 | current 검색·인덱스·context가 미완료·손상된 이관 기록을 거부합니다. context는 실제 workspace와 프로젝트 index를 요구합니다 |
-| Sources 내부 활성 정본·비 Markdown 자료 | 현재 검색·보존 검사의 포괄 범위가 부족합니다. 원본과 활성 owner를 구분하여 별도 검증해야 합니다 |
-| 문단 링크·의미·latest-only 준수 | 파일 존재 검사만으로 충분하지 않습니다. 실제 대상과 본문 검토가 필요합니다 |
+| Sources 내부 활성 정본·비 Markdown 자료 | 현재 영역의 비 Markdown 부속 자료와 등록한 Dae-Jeong 도메인은 해시 보존 대상입니다. source-domain의 현재 검색·활성 원장 분류와 도메인 스키마 검증은 별도로 남아 있습니다 |
+| 문단 링크·의미·latest-only 준수 | 지원하는 로컬 Markdown 문단과 HTML ID 링크를 검사합니다. 외부 URL 문단·의미·latest-only의 완전한 준수는 본문과 출처 검토가 필요합니다 |
+| 여러 세션의 동시 편집 | 공통 checkpoint를 사용합니다. 반복 편집 전에도 현재 bytes를 보존해야 하며 세션별 원자적 게시·checkpoint 격리는 구현되지 않았습니다 |
 
 구체적인 결함·수정 기준·수용 판정은 [내용·규칙 검토](../wiki/projects/llm-wiki/reviews/content-audit.md), 남은 작업은 [구현 Task](../wiki/projects/llm-wiki/tasks/shared-task-harness.md)가 소유합니다. 문서별 목록과 날짜 근거는 [전체 문서 현황](../wiki/projects/llm-wiki/reviews/document-register.md)에서 찾습니다.

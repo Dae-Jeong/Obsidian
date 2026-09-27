@@ -80,7 +80,7 @@ uv run python -m harness search '과거 결정' --scope history
 uv run python -m harness structure wiki/notes/example.md
 ```
 
-필수 항목·문서 역할·검증 날짜·미입력 변수를 검사합니다. 전체 기존 문서의 템플릿 적용은 진행 중이며 일반 `check`와 별도로 결과를 확인합니다.
+필수 항목·문서 역할·검증 날짜·미입력 변수를 검사합니다. 현재 Notes·Projects의 역할별 구조 적용을 완료했고, 로컬 등록의 `document_contract: 1`로 일반 `check`에도 통합했습니다. 내용의 사실 검증 범위는 문서별 근거와 확인 상태를 따릅니다.
 
 ### 문서 갱신
 
@@ -111,7 +111,7 @@ make index    # 현재 문서 검색 색인 재생성
 
 커밋 전 검사는 `.githooks/pre-commit`이 담당합니다. 해당 checkout에 연결하려면 `git config core.hooksPath .githooks`를 실행합니다. 개인 문서가 없는 환경에서는 `make test`로 실행 로직을 검증하고, 문서 설정이 끝난 환경에서는 `make check`로 실제 문서도 검사합니다.
 
-`.local/harness/`의 `projects.json`, `checkpoint.json`, `hook-state.sqlite`는 필요한 머신 상태입니다. `current.sqlite`, `sources.sqlite`, `history.sqlite`는 문서에서 재생성하는 검색 색인입니다.
+`.local/harness/`의 `projects.json`, `checkpoint.json`, `hook-state.sqlite`는 필요한 머신 상태입니다. `checkpoint.lock`은 checkpoint 명령의 동시 실행을 조정하며 문서 상태를 소유하지 않습니다. `current.sqlite`, `sources.sqlite`, `history.sqlite`는 문서에서 재생성하는 검색 색인입니다.
 
 ## 문서 안내
 

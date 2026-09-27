@@ -8,7 +8,7 @@ ROOT_NAMES = {'AGENTS.md', 'README.md', 'wiki', 'docs', 'harness', 'tests',
               '.gitmodules', '.githooks', '.obsidian', '.local', '.venv',
               'orchestration'}
 WIKI_NAMES = {'index.md', 'profile.md', 'notes', 'projects', 'sources', 'log'}
-LOCAL_FILES = {'harness/projects.json', 'harness/checkpoint.json',
+LOCAL_FILES = {'harness/projects.json', 'harness/checkpoint.json', 'harness/checkpoint.lock',
                'harness/hook-state.sqlite', 'harness/hook-state.sqlite-journal',
                'harness/current.sqlite', 'harness/sources.sqlite', 'harness/history.sqlite'}
 EXCLUSIONS = ()

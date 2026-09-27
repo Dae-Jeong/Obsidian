@@ -1,5 +1,6 @@
 """Detect lost before-state against the last validated local corpus checkpoint."""
 import hashlib
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -90,8 +91,21 @@ def issues(root, initialize=False):
 
 
 def checkpoint(root, initialize=False):
+    target = baseline_path(root)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    # Keep the lock file: unlinking it lets another process lock a new inode.
+    with (target.parent / 'checkpoint.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise ValueError('Another checkpoint is already running; retry after it finishes') from exc
+        return _checkpoint(root, initialize)
+
+
+def _checkpoint(root, initialize):
     from harness.check import check
     from harness.hooks import pending_issues
+    from harness.preserve import snapshot, verify
     target = baseline_path(root)
     if initialize == target.exists():
         raise ValueError('Use --initialize only once for a corpus without a checkpoint')
@@ -102,6 +116,16 @@ def checkpoint(root, initialize=False):
     if not result['ok']:
         raise ValueError('Document check failed; checkpoint not advanced: ' + json.dumps(result['issues'], ensure_ascii=False))
     files = state(root)
+    if target.exists():
+        previous = json.loads(target.read_text())['files']
+        changed = [name for name, sha in files.items() if previous.get(name) != sha]
+        if changed:
+            record = snapshot(root, changed, 'Preserve new checkpoint baseline bytes for continuing writers')
+            verify(root, record)
+            captured = {entry['path']: entry['sha256']
+                        for entry in json.loads((record / 'manifest.json').read_text())['files']}
+            if captured != {name: files[name] for name in changed}:
+                raise ValueError('Corpus changed during checkpoint preservation; retry from current sources')
     if before != fingerprint(root):
         raise ValueError('Corpus changed during validation; retry from current sources')
     target.parent.mkdir(parents=True, exist_ok=True)
