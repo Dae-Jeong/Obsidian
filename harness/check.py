@@ -6,7 +6,8 @@ from urllib.parse import unquote
 
 import yaml
 
-from harness.documents import parse, paths, sections
+from harness.documents import Document, parse, paths, sections
+import hashlib
 from harness.anchors import fragment_issue
 from harness.checkpoint import issues as preservation_issues
 from harness.layout import issues as layout_issues
@@ -66,9 +67,13 @@ def check(root, strict_tasks=True, *, initialize=False):
     for path in sorted(owners):
         rel = path.relative_to(root).as_posix()
         try:
+            raw = path.read_bytes()
             if path.suffix != '.md':
-                list(domains.sections(path, path.read_bytes()))
-            doc = parse(rel, path.read_bytes())
+                list(domains.sections(path, raw))
+                text = raw.decode('utf-8')
+                doc = Document(rel, text, {}, text, hashlib.sha256(raw).hexdigest())
+            else:
+                doc = parse(rel, raw)
         except (ValueError, UnicodeError, yaml.YAMLError) as exc:
             error(rel, "metadata", str(exc))
             continue

@@ -1,7 +1,7 @@
 """Code-work observations; Task owners remain in the central document corpus."""
 import hashlib
 import json
-from contextlib import closing
+from contextlib import closing, ExitStack
 from datetime import datetime, timezone
 import os
 from pathlib import Path
@@ -87,7 +87,7 @@ def database(root):
     import sqlite3
     db.row_factory = sqlite3.Row
     db.execute('CREATE TABLE IF NOT EXISTS work_sessions (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, project TEXT NOT NULL, task TEXT, task_path TEXT, task_hash TEXT, handoff_hash TEXT)')
-    db.execute('CREATE TABLE IF NOT EXISTS work_calls (id INTEGER PRIMARY KEY, session TEXT NOT NULL, tool TEXT NOT NULL, before_state TEXT NOT NULL, targets TEXT, task_hash TEXT, handoff_hash TEXT, state TEXT NOT NULL, changes TEXT, ambiguous INTEGER NOT NULL DEFAULT 0, reconciliation TEXT, UNIQUE(session,tool))')
+    db.execute('CREATE TABLE IF NOT EXISTS work_calls (id INTEGER PRIMARY KEY, session TEXT NOT NULL, tool TEXT NOT NULL, before_state TEXT NOT NULL, targets TEXT, task_hash TEXT, handoff_hash TEXT, state TEXT NOT NULL, changes TEXT, ambiguous INTEGER NOT NULL DEFAULT 0, reconciliation TEXT, reconciled_state TEXT, UNIQUE(session,tool))')
     db.commit()
     return db
 
@@ -198,7 +198,85 @@ def finish(root, key, tool, reconciliation=None):
 def reconcile(root, key, tool, reason):
     if not isinstance(reason, str) or not reason.strip():
         raise ValueError('Reconciliation requires actual writer and workspace findings')
+    with closing(database(root)) as db, db:
+        db.execute('BEGIN IMMEDIATE')
+        call = db.execute('SELECT * FROM work_calls WHERE session=? AND tool=?', (key, tool)).fetchone()
+        if not call or call['state'] == 'recorded':
+            raise ValueError('Reconciliation requires an unfinished observation')
+        if call['state'] == 'changed':
+            session = db.execute('SELECT * FROM work_sessions WHERE id=?', (key,)).fetchone()
+            current = manifest(Path(session['workspace']))
+            inspected = {p: current.get(p) for p in json.loads(call['changes'])}
+            db.execute('UPDATE work_calls SET reconciled_state=?,reconciliation=?,ambiguous=1,task_hash=?,handoff_hash=? WHERE id=?',
+                       (json.dumps(inspected), reason, task_hash(root, session),
+                        handoff_hash(root, session['task_path']), call['id']))
+            db.commit()
+            return status(root, key)
     return finish(root, key, tool, reconciliation=reason)
+
+
+def evidence_hash(root, evidence):
+    """Read a stable regular Log file without following swapped path components."""
+    try:
+        relative = (root / evidence).relative_to(root)
+        if relative.parts[:2] != ('wiki', 'log') or '..' in relative.parts:
+            raise ValueError('Execution evidence must exist inside wiki/log')
+        with ExitStack() as stack:
+            parent = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            stack.callback(os.close, parent)
+            opened = []
+            for part in relative.parts[:-1]:
+                fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                stack.callback(os.close, fd)
+                opened.append((parent, part, os.fstat(fd)))
+                parent = fd
+            fd = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+            with os.fdopen(fd, 'rb') as stream:
+                before = os.fstat(stream.fileno())
+                if not stat.S_ISREG(before.st_mode):
+                    raise ValueError('Execution evidence must be a regular file')
+                digest = hashlib.sha256()
+                for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                    digest.update(chunk)
+                if signature(os.fstat(stream.fileno())) != signature(before):
+                    raise ValueError('Execution evidence changed during reading')
+            if signature(os.stat(relative.name, dir_fd=parent, follow_symlinks=False)) != signature(before):
+                raise ValueError('Execution evidence was replaced during reading')
+            for ancestor, part, info in opened:
+                current = os.stat(part, dir_fd=ancestor, follow_symlinks=False)
+                if (current.st_dev, current.st_ino, current.st_mode) != (info.st_dev, info.st_ino, info.st_mode):
+                    raise ValueError('Execution evidence directory was replaced during reading')
+            return digest.hexdigest()
+    except OSError as exc:
+        raise ValueError('Execution evidence must remain an accessible regular file inside Log') from exc
+
+
+def write_receipt(root, payload):
+    name = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-work-' + uuid.uuid4().hex[:8]
+    try:
+        with ExitStack() as stack:
+            parent = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            stack.callback(os.close, parent)
+            opened = []
+            for part in ('wiki', 'log'):
+                fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                stack.callback(os.close, fd)
+                opened.append((parent, part, os.fstat(fd)))
+                parent = fd
+            os.mkdir(name, mode=0o700, dir_fd=parent)
+            folder = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+            stack.callback(os.close, folder)
+            fd = os.open('record.json', os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o600, dir_fd=folder)
+            with os.fdopen(fd, 'w') as stream:
+                stream.write(json.dumps(payload, ensure_ascii=False, indent=2) + '\n')
+            for ancestor, part, info in opened:
+                current = os.stat(part, dir_fd=ancestor, follow_symlinks=False)
+                if (current.st_dev, current.st_ino, current.st_mode) != (info.st_dev, info.st_ino, info.st_mode):
+                    raise ValueError('Log directory changed during receipt creation')
+    except OSError as exc:
+        raise ValueError('Receipt requires a stable Log directory without symlinks') from exc
+    return root / 'wiki/log' / name / 'record.json'
 
 
 def status(root, key=None, workspace=None):
@@ -231,13 +309,8 @@ def status(root, key=None, workspace=None):
 
 def record(root, key, evidence, reconciliation=None):
     root = root.resolve()
-    source = (root / evidence).resolve()
-    try:
-        source.relative_to(root / 'wiki/log')
-    except ValueError:
-        raise ValueError('Execution evidence must exist inside wiki/log') from None
-    if not source.is_file():
-        raise ValueError('Execution evidence must exist before work recording')
+    source = root / evidence
+    source_hash = evidence_hash(root, evidence)
     with closing(database(root)) as db, db:
         db.execute('BEGIN IMMEDIATE')
         session = db.execute('SELECT * FROM work_sessions WHERE id=?', (key,)).fetchone()
@@ -253,36 +326,37 @@ def record(root, key, evidence, reconciliation=None):
         if owner['path'] != session['task_path']:
             raise ValueError('Bound Task owner changed; reconcile its identity before recording')
         current_task = task_hash(root, session)
-        if current_task == session['task_hash'] or current_task == calls[-1]['task_hash']:
+        if current_task == session['task_hash'] or any(current_task == c['task_hash'] for c in calls):
             raise ValueError('Update the Task with current result and handoff after the code change')
         current_handoff = handoff_hash(root, session['task_path'])
-        if current_handoff == session['handoff_hash'] or current_handoff == calls[-1]['handoff_hash']:
+        if current_handoff == session['handoff_hash'] or any(current_handoff == c['handoff_hash'] for c in calls):
             raise ValueError('Task handoff content must change; metadata-only edits do not record work')
         if any(c['ambiguous'] for c in calls) and not (isinstance(reconciliation, str) and reconciliation.strip()):
             raise ValueError('Writer overlap requires explicit reconciliation findings')
         actual = manifest(Path(session['workspace']))
         expected = {}
         for call in calls:
-            expected.update({p: value['after'] for p, value in json.loads(call['changes']).items()})
+            expected.update(json.loads(call['reconciled_state']) if call['reconciled_state'] is not None
+                            else {p: value['after'] for p, value in json.loads(call['changes']).items()})
         if any(actual.get(p) != value for p, value in expected.items()):
             raise ValueError('Observed files drifted; reconcile actual work before recording')
-        receipt = root / 'wiki/log' / (datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-work-' + uuid.uuid4().hex[:8])
-        receipt.mkdir()
         payload = {'session': key, 'workspace': session['workspace'], 'project': session['project'],
                    'task': session['task'], 'task_path': session['task_path'], 'task_hash': current_task,
                    'source_evidence': str(source.relative_to(root)),
-                   'source_evidence_hash': hashlib.sha256(source.read_bytes()).hexdigest(),
+                   'source_evidence_hash': source_hash,
                    'reconciliation': reconciliation, 'verification': 'observations-and-record-linkage-only',
                    'observations': [{'tool': c['tool'], 'changes': json.loads(c['changes']),
                                      'attribution': 'explicit-target' if c['targets'] is not None else 'observed-window',
-                                     'ambiguous': bool(c['ambiguous']), 'reconciliation': c['reconciliation']} for c in calls]}
-        target = receipt / 'record.json'
-        target.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + '\n')
+                                     'ambiguous': bool(c['ambiguous']), 'reconciliation': c['reconciliation'],
+                                     'reconciled_state': json.loads(c['reconciled_state']) if c['reconciled_state'] is not None else None} for c in calls]}
+        target = write_receipt(root, payload)
         if task_hash(root, session) != current_task:
             raise ValueError('Task drifted while recording; reconcile current handoff')
         latest = manifest(Path(session['workspace']))
         if any(latest.get(p) != value for p, value in expected.items()):
             raise ValueError('Observed files drifted during recording; reconcile actual work')
+        if evidence_hash(root, evidence) != source_hash:
+            raise ValueError('Execution evidence changed during recording')
         db.execute("UPDATE work_calls SET state='recorded' WHERE session=? AND state='changed'", (key,))
         db.execute('UPDATE work_sessions SET task_hash=?,handoff_hash=? WHERE id=?', (current_task, current_handoff, key))
     return {'recorded': len(calls), 'evidence': str(target.relative_to(root))}

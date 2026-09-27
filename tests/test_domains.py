@@ -71,6 +71,20 @@ class DomainRetrievalTests(unittest.TestCase):
         self.write('registry.yaml', 'attempts:\n- id: one\n  status: active\n  artifact_state: mutable\n  source_path: wiki/attempt/originals/README.md\n')
         self.assertEqual(search(self.root, self.db, '찾기')['hits'], [])
 
+    def test_structured_numeric_keys_and_yaml_document_marker_are_valid(self):
+        from harness.check import check
+        self.write('profile/claims.yaml', '---\nrevision: 2\nchapters:\n  1: 찾기 첫째\n  2: 둘째\n')
+        self.assertTrue(check(self.root)['ok'])
+        self.assertTrue(search(self.root, self.db, '찾기')['hits'])
+
+    def test_duplicate_structured_keys_are_diagnostic(self):
+        from harness.check import check
+        for name, value in [('claims.yaml', 'chapters:\n  1: first\n  1: second\n'),
+                            ('claims.json', '{"first": 1, "first": 2}')]:
+            path = self.write('profile/' + name, value)
+            self.assertIn('metadata', {e['code'] for e in check(self.root)['issues']})
+            path.unlink()
+
     def test_escape_and_unprotected_root_are_rejected(self):
         self.config['current_domains'][0]['root'] = 'wiki/sources/other'
         self.registry.write_text(json.dumps(self.config))

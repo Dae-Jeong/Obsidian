@@ -281,6 +281,90 @@ class WorkRecordTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'drift'):
             self.record()
 
+    def test_evidence_swap_after_containment_check_is_rejected(self):
+        from unittest.mock import patch
+        self.bind()
+        self.begin()
+        self.code.write_text('observed')
+        self.finish()
+        self.task.write_text(self.task.read_text() + '\nResult')
+        outside = self.vault / 'outside.txt'
+        outside.write_text('not Log evidence')
+        original = work.manifest
+        def observing(path):
+            result = original(path)
+            if not self.evidence.is_symlink():
+                self.evidence.unlink()
+                self.evidence.symlink_to(outside)
+            return result
+        with patch.object(work, 'manifest', side_effect=observing):
+            with self.assertRaisesRegex(ValueError, '[Ee]vidence'):
+                self.record()
+        self.assertIn('work-unrecorded', work.status(self.vault, self.key)['issues'])
+
+    def test_fifo_evidence_is_rejected_without_waiting_for_a_writer(self):
+        import sys
+        fifo = self.evidence.with_name('fifo')
+        os.mkfifo(fifo)
+        command = ('from pathlib import Path; from harness.work import evidence_hash; '
+                   'import sys; evidence_hash(Path(sys.argv[1]), "wiki/log/fifo")')
+        result = subprocess.run([sys.executable, '-c', command, str(self.vault)],
+                                capture_output=True, text=True, timeout=2)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('regular file', result.stderr)
+
+    def test_swapped_log_parent_cannot_receive_receipt_outside_log(self):
+        from unittest.mock import patch
+        self.bind()
+        self.begin()
+        self.code.write_text('observed')
+        self.finish()
+        self.task.write_text(self.task.read_text() + '\nResult')
+        outside = self.vault / 'outside-log'
+        outside.mkdir()
+        (outside / 'result.md').write_text(self.evidence.read_text())
+        log = self.vault / 'wiki/log'
+        original = work.manifest
+        def observing(path):
+            result = original(path)
+            if not log.is_symlink():
+                log.rename(log.with_name('log-original'))
+                log.symlink_to(outside, target_is_directory=True)
+            return result
+        with patch.object(work, 'manifest', side_effect=observing):
+            with self.assertRaises(ValueError):
+                self.record()
+        self.assertEqual([p.name for p in outside.iterdir()], ['result.md'])
+
+    def test_changed_observation_can_be_reconciled_without_losing_original(self):
+        self.bind()
+        self.begin()
+        self.code.write_text('observed')
+        observed = manifest(self.root)['code.py']
+        self.finish()
+        self.code.write_text('actual reconciled state')
+        work.reconcile(self.vault, self.key, 'one', 'Both writers stopped; inspected current state')
+        self.task.write_text(self.task.read_text() + '\nActual reconciled result and next action')
+        result = self.record(reconciliation='Inspected both writer results')
+        receipt = json.loads((self.vault / result['evidence']).read_text())
+        call = receipt['observations'][0]
+        self.assertEqual(call['changes']['code.py']['after'], observed)
+        self.assertEqual(call['reconciled_state']['code.py'], manifest(self.root)['code.py'])
+        self.assertTrue(call['ambiguous'])
+
+    def test_reconciling_older_call_requires_another_handoff_update(self):
+        self.bind()
+        self.begin('older')
+        self.code.write_text('older')
+        self.finish('older')
+        self.begin('newer')
+        self.code.write_text('newer')
+        self.finish('newer')
+        self.task.write_text(self.task.read_text() + '\nPrior handoff')
+        work.reconcile(self.vault, self.key, 'older', 'Inspected current state after both calls')
+        with self.assertRaisesRegex(ValueError, 'Task'):
+            self.record(reconciliation='Resolved older observation')
+
     def test_wrong_task_and_pending_rebinding_are_rejected(self):
         with self.assertRaises(ValueError):
             work.bind(self.vault, self.key, self.root, 'different.task')

@@ -7,6 +7,30 @@ import yaml
 FORMATS = {'.md', '.yaml', '.yml', '.json'}
 
 
+def unique_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        try:
+            if key in result:
+                raise ValueError(f'Duplicate structured key: {key}')
+            result[key] = value
+        except TypeError as exc:
+            raise ValueError('Structured mapping keys must be scalar values') from exc
+    return result
+
+
+class StructuredLoader(yaml.SafeLoader):
+    pass
+
+
+def structured_mapping(loader, node):
+    return unique_pairs((loader.construct_object(key), loader.construct_object(value))
+                        for key, value in node.value)
+
+
+StructuredLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, structured_mapping)
+
+
 def fields(value, required, optional=()):
     if (not isinstance(value, dict) or not required <= value.keys()
             or value.keys() - required - set(optional)):
@@ -69,7 +93,7 @@ def select(base, include, exclude):
 
 
 def paths(root):
-    from harness.documents import protected_roots, UniqueLoader
+    from harness.documents import protected_roots
     config = root / '.local/harness/projects.json'
     if not config.exists():
         return []
@@ -97,7 +121,7 @@ def paths(root):
         for collection in collections:
             collection_schema(collection)
             registry = inside(base, collection['registry'])
-            data = yaml.load(registry.read_text(), Loader=UniqueLoader)
+            data = yaml.load(registry.read_text(), Loader=StructuredLoader)
             records = data.get(collection['items']) if isinstance(data, dict) else None
             if not isinstance(records, list):
                 raise ValueError('Domain collection requires a registry record list')
@@ -124,10 +148,9 @@ def paths(root):
 def sections(path, raw):
     """Keep structured records separate so one excerpt does not mix several claims."""
     if path.suffix == '.json':
-        data = json.loads(raw)
+        data = json.loads(raw, object_pairs_hook=unique_pairs)
     else:
-        from harness.documents import UniqueLoader
-        data = yaml.load(raw.decode('utf-8'), Loader=UniqueLoader)
+        data = yaml.load(raw.decode('utf-8'), Loader=StructuredLoader)
     if not isinstance(data, (dict, list)):
         raise ValueError(f'Current structured owner requires a mapping or list: {path}')
     groups = data.items() if isinstance(data, dict) else [('records', data)]
