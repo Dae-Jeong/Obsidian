@@ -248,19 +248,31 @@ def handle_documents(root, agent, payload, scoped=False, own_change=False):
 
 def control_command(root, cwd, command):
     """Only pure calls to the central CLI; no shell evaluation is performed."""
-    if Path(cwd).resolve() != root.resolve() or not isinstance(command, str):
+    if not isinstance(command, str):
         return False
-    if any(c in command for c in '\n\r$`;&|<>()*?[]{}~'):
+    if any(c in command for c in '\n\r$`;|<>()*?[]{}~'):
         return False
     try:
         words = shlex.split(command)
     except ValueError:
+        return False
+    if len(words) > 3 and words[0] == 'cd' and words[2] == '&&':
+        if Path(words[1]).resolve() != root.resolve():
+            return False
+        words = words[3:]
+    elif Path(cwd).resolve() != root.resolve():
+        return False
+    if any('&' in word for word in words):
         return False
     if words[:2] == ['uv', 'run']:
         words = words[2:]
     interpreters = {'python', 'python3', str(root / '.venv/bin/python')}
     if len(words) < 4 or words[0] not in interpreters or words[1:3] != ['-m', 'harness']:
         return False
+    if words[3] == '--root':
+        if len(words) < 6 or Path(words[4]).resolve() != root.resolve():
+            return False
+        words = words[:3] + words[5:]
     if words[3] == 'work':
         return len(words) > 4 and words[4] in {'bind', 'record', 'status', 'reconcile'}
     return words[3] in {'context', 'search', 'index', 'snapshot', 'verify', 'check', 'checkpoint', 'structure', 'catalog'}
@@ -323,10 +335,12 @@ def handle(root, agent, payload):
     if event == 'SessionStart':
         response = handle_documents(root, agent, payload, scoped=True)
         if registered(root, cwd):
-            state = work.status(root, workspace=cwd)
-            unfinished = [s for s in state['sessions'] if s['calls']]
-            if unfinished:
-                return output(event, 'info', 'context', f'Read {root}/wiki/notes/agents/work-management-policy.md and the full central Task. Reconcile unfinished work: ' + json.dumps(unfinished, ensure_ascii=False))
+            from harness.context import context
+            owner = context(root, cwd)
+            return output(event, 'info', 'context',
+                          f'Agent: {agent}. Session ID: {raw_session}. CLI identity: --agent {agent} --session {raw_session}. Workspace: {cwd}. Read {root}/wiki/notes/agents/work-management-policy.md and the full central Task. '
+                          'Bind this session to its Task before code changes; update the Task and record actual evidence before finishing. '
+                          'Unfinished work in this worktree: ' + json.dumps(owner['unfinished_work'], ensure_ascii=False))
         return response
     if event == 'PreToolUse':
         if name not in {'Bash', 'Edit', 'Write', 'MultiEdit', 'apply_patch'}:

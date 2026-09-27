@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sqlite3
+from contextlib import closing
 
 from harness.documents import parse
 from harness.readiness import ensure_readable
@@ -57,9 +59,31 @@ def context(root, workspace, task=None):
         tasks.append(entry)
     if task and len(tasks) != 1:
         raise ValueError("Task must resolve to exactly one document within the project")
+    unfinished = []
+    state = root / '.local/harness/hook-state.sqlite'
+    if state.exists() and common:
+        actual = subprocess.run(['git', '-C', str(workspace), 'rev-parse', '--show-toplevel'],
+                                capture_output=True, text=True, check=True, env=git_environment())
+        worktree = str(Path(actual.stdout.strip()).resolve())
+        # Read-only: context is also called inside a work-state write transaction.
+        with closing(sqlite3.connect(f'{state.as_uri()}?mode=ro', uri=True)) as db:
+            db.row_factory = sqlite3.Row
+            tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if {'work_sessions', 'work_calls'} <= tables:
+                unfinished = [dict(r) for r in db.execute(
+                    "SELECT s.id AS session,s.task,s.task_path,c.tool,c.state,c.ambiguous FROM work_sessions s JOIN work_calls c ON c.session=s.id WHERE s.workspace=? AND c.state!='recorded' ORDER BY c.id",
+                    (worktree,))]
+                if 'hook_calls' in tables:
+                    unfinished += [dict(r) for r in db.execute(
+                        "SELECT s.id AS session,s.task,s.task_path,h.tool,'hook-pending' AS state FROM work_sessions s JOIN hook_calls h ON h.session=s.id LEFT JOIN work_calls c ON c.session=h.session AND c.tool=h.tool WHERE s.workspace=? AND (c.id IS NULL OR c.state!='pending')",
+                        (worktree,))]
+        for call in unfinished:
+            call['issues'] = ['work-pending' if call['state'] in ('pending', 'hook-pending') else 'work-unrecorded']
+            if not call['task']:
+                call['issues'].append('work-task-missing')
     ensure_readable(root, publication)
     return {"project_id": project["id"], "index": str(folder.relative_to(root.resolve()) / "index.md"),
             "policy": "wiki/notes/agents/work-management-policy.md", "workspace": str(workspace),
-            "git_common_dir": common, "tasks": tasks,
+            "git_common_dir": common, "tasks": tasks, "unfinished_work": unfinished,
             "instruction": "Read the chosen full Task, reconcile workspace and active writers, then continue authorized work. "
                            "Do not infer product completion from metadata or start every listed task."}

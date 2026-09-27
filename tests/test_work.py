@@ -11,6 +11,13 @@ from harness.context import git_environment
 
 
 class WorkObservationTests(unittest.TestCase):
+    def test_session_identity_rejects_agent_prefix_inside_raw_id(self):
+        for valid in ('codex:one', 'claude:session-1'):
+            work.identity(valid)
+        for invalid in ('codex:codex:one', 'claude:claude:one', 'codex:', 'codex: one', 'codex:one\n'):
+            with self.assertRaises(ValueError):
+                work.identity(invalid)
+
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)

@@ -14,7 +14,7 @@ Installation, runtime trust and execution evidence are separate checks.
 - `wiki/profile.md`: confirmed working preferences.
 - `wiki/notes/`: reusable current knowledge and shared rules.
 - `wiki/projects/<project>/`: project entry, Tasks and relevant reviews.
-- `wiki/sources/`: original evidence and attachments with provenance.
+- `wiki/sources/`: original evidence and attachments; explicitly selected active domain owners follow current-document rules.
 - `wiki/log/` and `wiki/log/index.md`: before-state, reasons, attempts and validation evidence.
 - `harness/`: executable preservation, validation, context and retrieval workflow.
 - `tests/`: synthetic regression tests.
@@ -66,8 +66,7 @@ vault. History and source retrieval remain available for evidence investigation.
 The project registry, checkpoint and hook-state.sqlite are required machine state. Only the three
 SQLite indexes are disposable. Reports and before-state belong in wiki/log;
 original evidence belongs in wiki/sources. Root layout checks include hidden entries and empty directories. Current retrieval
-and Task validation cover wiki/notes and wiki/projects; sources and historical Log
-are separate scopes. The independent orchestration submodule is a runtime boundary.
+covers base current owners plus explicitly selected current_domains. Task validation covers wiki/projects; unselected sources and historical Log are separate scopes. The independent orchestration submodule is a runtime boundary.
 
 Recognizable process headings such as Previous Version, Changelog and 작업 로그
 are rejected in current documents. This catches explicit historical sections;
@@ -75,15 +74,13 @@ semantic obsolescence still requires reading the source and current owner.
 
 Search returns bounded sections and discloses truncation. Read the complete Task
 before resuming work. Whole-corpus hashes detect additions, edits, moves and
-deletions; stale indexes rebuild locally. Current queries exclude wiki/sources and Log.
+deletions; stale indexes rebuild locally. Current queries exclude Log and unselected source archives; selected current domain owners remain searchable.
 
 ## Preservation and Template Scope
 
 Preservation covers full bytes of current Markdown and non-Markdown companions
 under notes, projects and docs. Companion edits also invalidate the current
-revision seen by hooks and retrieval. Markdown metadata/link checks and full-text
-search still operate on Markdown; preservation does not test HTML behavior or
-validate a product YAML schema.
+revision seen by hooks and retrieval. Markdown receives metadata/link checks; selected domain YAML/JSON receives syntax and duplicate-key checks plus section search. Preservation does not test HTML behavior or validate a product YAML schema.
 
 The optional `protected_roots` list in projects.json registers explicit domain
 paths under wiki/sources for preservation. On this machine it includes
@@ -101,7 +98,7 @@ fragments and runtime rendering are not verified by this check.
 
 `current_domains` in projects.json selects current owners within an existing
 `protected_roots` registration. This is opt-in; the live domain classification,
-cleanup and product validation must precede enabling it. Registration alone does
+cleanup and product validation must establish the selected scope. This machine selects active Dae-Jeong owners; frozen submissions and original evidence remain excluded. Registration alone does
 not select every preserved file. A generic configuration has this shape:
 
 ```json

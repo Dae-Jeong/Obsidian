@@ -161,6 +161,33 @@ class WorkHookTests(unittest.TestCase):
         for suffix in ('; touch file', ' > file', '\ntrue', ' $(touch file)', ' `touch file`', ' *', ' ~/file'):
             self.assertFalse(control_command(self.vault, self.vault, pure + suffix))
 
+    def test_explicit_root_control_requires_same_root(self):
+        base = f'python -m harness --root {self.vault} work status'
+        self.assertTrue(control_command(self.vault, self.vault, base))
+        self.assertFalse(control_command(self.vault, self.vault, 'python -m harness --root /tmp work status'))
+
+    def test_project_can_switch_to_central_cli_without_observing_itself(self):
+        command = f'cd {self.vault} && uv run python -m harness work status'
+        self.assertTrue(control_command(self.vault, self.root, command))
+        for bad in (command + ' && touch file', command.replace('&&', ';'),
+                    command.replace(str(self.vault), '/tmp'), command + ' > result'):
+            self.assertFalse(control_command(self.vault, self.root, bad))
+
+    def test_context_exposes_unfinished_calls_with_task_owner(self):
+        from harness.context import context
+        work.bind(self.vault, 'codex:one', self.root, 'example.work')
+        self.event('PreToolUse')
+        result = context(self.vault, self.root, 'example.work')
+        self.assertEqual(result['unfinished_work'][0]['session'], 'codex:one')
+        self.assertEqual(result['unfinished_work'][0]['task'], 'example.work')
+        self.assertEqual(result['unfinished_work'][0]['state'], 'pending')
+        self.assertIn('content', result['tasks'][0])
+
+    def test_session_context_identifies_own_session(self):
+        message = json.dumps(self.event('SessionStart', session='reader'))
+        self.assertIn('Session ID: reader', message)
+        self.assertIn('--agent codex --session reader', message)
+
     def test_unknown_shell_document_change_still_checks_preservation(self):
         self.event('PreToolUse', name='Bash', data={'command': 'external-script'})
         self.task.write_text(self.task.read_text() + '\nUnpreserved edit\n')

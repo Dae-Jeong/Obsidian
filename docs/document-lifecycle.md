@@ -169,7 +169,7 @@ flowchart TD
 | snapshot·해시 검증·check·checkpoint·검색 | 실행 명령이 제공됩니다. check 성공이 내용의 정확성을 보장하지는 않습니다 |
 | checkpoint 누락·손상 | 정상 check와 checkpoint가 오류로 종료합니다. 최초 설정만 명시적 initialize를 사용합니다 |
 | 중단 이관·정본 부재 | current 검색·인덱스·context가 미완료·손상된 이관 기록을 거부합니다. context는 실제 workspace와 프로젝트 index를 요구합니다 |
-| Sources 내부 활성 정본·비 Markdown 자료 | 현재 영역의 비 Markdown 부속 자료와 등록한 Dae-Jeong 도메인은 해시 보존 대상입니다. source-domain의 현재 검색·활성 원장 분류와 도메인 스키마 검증은 별도로 남아 있습니다 |
+| Sources 내부 활성 정본·비 Markdown 자료 | 현재 영역의 비 Markdown 부속 자료와 등록한 Dae-Jeong 도메인은 해시 보존 대상입니다. current_domains로 선택된 Markdown·YAML·JSON은 현재 검색과 편집 검사에 포함됩니다. 제품 스키마·의미 검증은 제품별로 수행합니다 |
 | 문단 링크·의미·latest-only 준수 | 지원하는 로컬 Markdown 문단과 HTML ID 링크를 검사합니다. 외부 URL 문단·의미·latest-only의 완전한 준수는 본문과 출처 검토가 필요합니다 |
 | 여러 세션의 동시 편집 | 공통 checkpoint를 사용합니다. 반복 편집 전에도 현재 bytes를 보존해야 하며 세션별 원자적 게시·checkpoint 격리는 구현되지 않았습니다 |
 

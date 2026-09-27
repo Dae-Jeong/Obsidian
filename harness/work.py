@@ -93,7 +93,9 @@ def database(root):
 
 
 def identity(key):
-    if not isinstance(key, str) or ':' not in key or key.split(':', 1)[0] not in ('codex', 'claude') or not key.split(':', 1)[1]:
+    if (not isinstance(key, str) or key.count(':') != 1
+            or key.split(':', 1)[0] not in ('codex', 'claude')
+            or not key.split(':', 1)[1] or any(char.isspace() for char in key)):
         raise ValueError('Work session must identify codex:SESSION or claude:SESSION')
 
 

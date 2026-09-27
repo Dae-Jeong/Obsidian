@@ -60,7 +60,17 @@ uv run python -m harness context /absolute/project/path
 uv run python -m harness context /absolute/project/path --task TASK_ID
 ```
 
-기존 Task의 전체 내용을 읽고 실제 저장소 상태와 대조한 뒤 작업을 이어갑니다.
+기존 Task의 전체 내용을 읽고 실제 저장소 상태와 대조한 뒤 작업을 이어갑니다. `context`는 같은 worktree의 미완료 호출도 반환합니다. 남아 있는 호출은 writer 종료와 파일 상태를 확인한 후 명시적으로 조정합니다.
+
+`work_contract: 1`인 등록 프로젝트의 코드 작업은 세션을 Task에 연결합니다. `SESSION_ID`는 SessionStart가 알려 준 접두어 없는 ID입니다.
+
+```sh
+uv run python -m harness work bind /absolute/project/path --task TASK_ID --agent codex --session SESSION_ID
+# 코드 변경·검증 후 Task의 현재 결과와 다음 행동, 실제 Log 근거 갱신
+uv run python -m harness work record --agent codex --session SESSION_ID --evidence wiki/log/RUN/result.json
+```
+
+Claude는 `--agent claude`를 사용합니다. 원인이 불명확한 shell 관측은 실제 파일과 writer를 대조한 `--reconciliation` 설명이 필요합니다. 자세한 중단·조정 절차는 [어댑터 설계](docs/harness/agent-hooks-design.md)를 따릅니다.
 
 ### 문서 검색
 
@@ -70,7 +80,7 @@ uv run python -m harness search '원문 근거' --scope sources
 uv run python -m harness search '과거 결정' --scope history
 ```
 
-기본 검색은 현재 문서만 조회합니다. 검색 결과의 정본과 확인 범위를 읽어 적용 가능성을 판단합니다.
+기본 검색은 현재 문서만 조회합니다. `current_domains`가 명시적으로 선택한 제품 Markdown·YAML·JSON 원장도 포함합니다. Sources 안에 있다는 이유만으로 모든 문서를 현재 owner로 취급하지 않습니다. 검색 결과의 정본과 확인 범위를 읽어 적용 가능성을 판단합니다.
 
 ### 역할별 템플릿 검사
 
@@ -152,7 +162,7 @@ make index    # 현재 문서 검색 색인 재생성
 | Profile·규칙 | 확인된 선호와 현재 규칙을 기존 owner에 반영 | 적용되는 내용만 유지 |
 | Notes | 읽은 출처와 설명·확인 범위·불확실성 기록 | 재사용 시 근거의 현재성 확인 |
 | Project·Task | 목표·범위·완료 기준·현재 결과·다음 행동·증거 갱신 | 같은 경로에 최종 결과와 한계 유지 |
-| Sources | 원문·첨부·출처·시점 보존 | 원본 bytes 보존 |
+| Sources | 원문·첨부·출처·시점 보존. 명시적으로 선택한 활성 도메인은 현재 owner 계약 적용 | 원본 bytes 보존, 활성 owner의 이전 상태는 Log |
 | Log | 수정 전 전체 원문·변경 이유·과정·검사 결과 기록 | 이력으로 보존, 기본 검색에서 제외 |
 
 편집 순서:
@@ -171,4 +181,4 @@ uv run python -m harness check
 
 해시·구문·링크 검사는 사실 검증을 대신하지 않습니다. 자연어의 최신성, 실제 제품 동작과 완료 근거는 별도로 검토합니다. 검사 스크립트는 CI 방식으로 작동하며 동일 계정의 임의 파일 수정을 OS 권한으로 차단하지 않습니다.
 
-보존 검사는 현재 영역의 비 Markdown 부속 파일과 `projects.json`에 등록한 추가 도메인도 포함합니다. 추가 도메인 등록은 해당 파일의 현재성·편집 권한·제품 스키마 검증을 대신하지 않습니다. 검색 DB는 Markdown에서 재생성합니다. 기본 검색은 현재 문서만 대상으로 하며 원본과 이력은 명시적으로 범위를 선택합니다. Task를 이어받을 때는 전체 본문을 읽어 권한·blocker·검증 조건을 빠뜨리지 않습니다.
+보존 검사는 현재 영역의 비 Markdown 부속 파일과 `projects.json`에 등록한 추가 도메인도 포함합니다. 추가 도메인 등록은 해당 파일의 현재성·편집 권한·제품 스키마 검증을 대신하지 않습니다. 검색 DB는 Markdown과 선택된 YAML·JSON에서 재생성합니다. 기본 검색은 현재 문서만 대상으로 하며 원본과 이력은 명시적으로 범위를 선택합니다. Task를 이어받을 때는 전체 본문을 읽어 권한·blocker·검증 조건을 빠뜨리지 않습니다.

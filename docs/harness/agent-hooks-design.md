@@ -87,8 +87,7 @@ checkpoint 명령끼리는 POSIX lock으로 동시 실행을 막고, 새 기준�
 ### 코드 작업 어댑터의 활성 조건
 
 `.local/harness/projects.json`의 `work_contract: 1`은 아래 코드 작업 관측을 켭니다.
-현재 운영 설정에는 아직 활성화하지 않았으며, 실제 Codex·Claude 실행 검증이 남아
-있습니다. 기본 문서 어댑터의 전역 revision 감지와 아래 호출별 관측을 구분합니다.
+현재 로컬 설정에는 활성화되어 있습니다. 실제 Codex의 변경·기록·종료 통과와 Claude의 기록 누락 차단·정상 기록 통과를 확인했습니다. 동시 실행·중단·후속 인수의 전체 수용 상태는 중앙 Task와 실행 근거를 따릅니다. 기본 문서 어댑터의 전역 revision 감지와 아래 호출별 관측을 구분합니다.
 설정을 꺼도 이미 관측된 세션의 미완료 기록은 해제되지 않습니다.
 
 - Pre는 문서 보존 검사를 먼저 수행합니다. 거부된 편집은 코드 pending을 만들지
@@ -102,12 +101,12 @@ checkpoint 명령끼리는 POSIX lock으로 동시 실행을 막고, 새 기준�
   세션에는 다른 writer의 전역 revision 변화를 작업으로 부과하지 않습니다.
 - 중앙 vault에서 실행하는 순수 `uv run python -m harness ...` 또는 같은 Python
   모듈 명령은 자기 기록을 pending으로 만들지 않습니다. 허용 subcommand만 인정하고
-  shell 연결·redirection·치환·glob·tilde 확장이 있으면 이 예외를 적용하지 않습니다.
+  정확한 `cd CENTRAL_ROOT &&` 접두어만 허용하며, 추가 shell 연결·redirection·치환·glob·tilde 확장이 있으면 이 예외를 적용하지 않습니다.
 - Stop은 자기 세션의 작업 pending·Task 연결·미기록 변경을 검사합니다. SessionStart는
   같은 worktree의 미완료 작업을 보여 줍니다. 명시적 work reconcile은 실제 writer와
   파일 확인 후 호출 연결을 정리하되, 변경된 작업의 기록과 문서 검증 의무는 유지합니다.
 
-아래는 구현 완료 선언이 아닌, 남은 작업의 판정 기준입니다. 구현 전에 입력·범위·실패 결과를 확정하고 정상 사례와 위반 사례를 고정합니다. 특정 문서의 정리 작업은 상시 검사 코드로 만들지 않습니다. 실제 구현과 검증 상태는 중앙 Task가 소유합니다.
+아래는 각 구현과 운영 수용의 판정 기준입니다. 구현 전에 입력·범위·실패 결과를 확정하고 정상 사례와 위반 사례를 고정합니다. 특정 문서의 정리 작업은 상시 검사 코드로 만들지 않습니다. 실제 구현과 검증 상태는 중앙 Task가 소유합니다.
 
 | 문제 | 입력과 책임 범위 | 기대 동작 | 필수 검증 |
 | --- | --- | --- | --- |
@@ -126,7 +125,7 @@ checkpoint 명령끼리는 POSIX lock으로 동시 실행을 막고, 새 기준�
 구성합니다. `harness work reconcile`은 중단된 호출의 명시적 조정을 담당합니다.
 bind는 agent·session·실제 workspace와 중앙 Task ID를 연결하고,
 record는 현재 Task와 실행 근거를 변경 관측에 연결합니다. status는 기록 누락과
-인수할 상태를 읽습니다. 이 절은 구현 기준이며 실제 활성 여부는 중앙 Task를 따릅니다.
+인수할 상태를 읽습니다. SessionStart가 제공하는 raw Session ID를 `--session`에 전달합니다. `codex:`나 `claude:` 접두어를 붙이지 않습니다. 실제 활성 여부와 검증 근거는 중앙 Task를 따릅니다.
 
 - 프로젝트는 등록 root 또는 Git common directory로 식별하고 실제 worktree root를
   별도로 보관합니다. 다른 worktree의 파일 상태를 같은 작업 상태로 합치지 않습니다.
@@ -159,11 +158,9 @@ record는 현재 Task와 실행 근거를 변경 관측에 연결합니다. stat
 
 구현 검증은 코드 추가·수정·삭제·symlink·실행 권한, ignored 파일, worktree 분리,
 Task 오연결, 갱신 없는 record, 근거 누락, 기록 후 재편집, 동시 호출과 중단·인수를
-각각 포함합니다. native 런타임 검증 전에는 이 절을 설치 완료로 안내하지 않습니다.
+각각 포함합니다. 합성 테스트와 실제 런타임 근거의 검증 범위는 구분합니다.
 
-작업 연결과 기록 명령은 다음 형태입니다. hook이 tool_use_id별 관측을 생성하도록
-연결하는 작업은 별도 수용 대상입니다. CLI 명령이 있다는 사실만으로 자동 관측을
-설치 완료로 취급하지 않습니다.
+작업 연결과 기록 명령은 다음 형태입니다. `work_contract: 1`과 등록 프로젝트에서 훅이 tool_use_id별 관측을 생성합니다. CLI 명령이 있다는 사실만으로 자동 관측이 실행됐다고 판단하지 않고 실제 세션 상태와 종료 근거를 확인합니다.
 
 ```sh
 uv run python -m harness work bind /absolute/project/path --task TASK_ID --agent codex --session SESSION_ID
