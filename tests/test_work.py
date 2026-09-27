@@ -1,0 +1,304 @@
+import os
+import json
+from pathlib import Path
+import subprocess
+import tempfile
+import unittest
+
+from harness.work import manifest, differences, repository
+from harness import work
+from harness.context import git_environment
+
+
+class WorkObservationTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.root = Path(temp.name).resolve()
+        self.git('init', '-q')
+        self.git('config', 'user.email', 'fixture@example.invalid')
+        self.git('config', 'user.name', 'Fixture')
+
+    def git(self, *args):
+        return subprocess.run(['git', '-C', str(self.root), *args],
+                              capture_output=True, text=True, check=True, env=git_environment())
+
+    def test_changes_include_content_add_delete_and_executable_mode(self):
+        code = self.root / 'code.py'
+        code.write_text('one')
+        self.git('add', 'code.py')
+        before = manifest(self.root)
+        code.write_text('two')
+        added = self.root / 'a file\nwith newline.py'
+        added.write_text('new')
+        after = manifest(self.root)
+        self.assertEqual(set(differences(before, after)), {'code.py', added.name})
+        before = after
+        code.chmod(0o755)
+        self.assertEqual(set(differences(before, manifest(self.root))), {'code.py'})
+        before = manifest(self.root)
+        code.unlink()
+        self.assertEqual(differences(before, manifest(self.root))['code.py']['after'], None)
+
+    def test_ignored_files_and_symlink_targets_are_not_read(self):
+        (self.root / '.gitignore').write_text('ignored/\n')
+        ignored = self.root / 'ignored'
+        ignored.mkdir()
+        target = ignored / 'private'
+        target.write_text('one')
+        link = self.root / 'link'
+        link.symlink_to(target)
+        before = manifest(self.root)
+        self.assertNotIn('ignored/private', before)
+        target.write_text('two')
+        self.assertEqual(manifest(self.root), before)
+        link.unlink()
+        link.symlink_to('elsewhere')
+        self.assertEqual(set(differences(before, manifest(self.root))), {'link'})
+
+    def test_tracked_path_replaced_by_parent_symlink_is_not_followed(self):
+        folder = self.root / 'folder'
+        folder.mkdir()
+        (folder / 'code.py').write_text('tracked')
+        self.git('add', 'folder/code.py')
+        (folder / 'code.py').unlink()
+        folder.rmdir()
+        target = self.root / 'ignored'
+        target.mkdir()
+        (self.root / '.gitignore').write_text('ignored/\n')
+        (target / 'code.py').write_text('outside')
+        folder.symlink_to(target, target_is_directory=True)
+        before = manifest(self.root)
+        (target / 'code.py').write_text('changed outside')
+        self.assertEqual(manifest(self.root), before)
+        self.assertEqual(before['folder/code.py'], 'ancestor-symlink')
+
+    def test_worktrees_remain_distinct_and_non_git_is_explicit(self):
+        (self.root / 'code.py').write_text('main')
+        self.git('add', 'code.py')
+        self.git('commit', '-qm', 'initial')
+        with tempfile.TemporaryDirectory() as second:
+            linked = Path(second) / 'linked'
+            self.git('worktree', 'add', '-q', '-b', 'other', str(linked))
+            (linked / 'code.py').write_text('other')
+            self.assertEqual(repository(linked), linked.resolve())
+            self.assertNotEqual(manifest(linked), manifest(self.root))
+        with tempfile.TemporaryDirectory() as outside:
+            with self.assertRaisesRegex(ValueError, 'Git worktree'):
+                repository(Path(outside))
+
+    def test_foreign_git_environment_cannot_redirect_observation(self):
+        from unittest.mock import patch
+        (self.root / 'code.py').write_text('owned')
+        with patch.dict(os.environ, {'GIT_DIR': '/does/not/exist', 'GIT_WORK_TREE': '/tmp'}):
+            self.assertEqual(repository(self.root), self.root)
+            self.assertIn('code.py', manifest(self.root))
+
+
+class WorkRecordTests(unittest.TestCase):
+    git = WorkObservationTests.git
+
+    def setUp(self):
+        WorkObservationTests.setUp(self)
+        self.vault = self.root / 'vault'
+        (self.vault / '.local/harness').mkdir(parents=True)
+        docs = self.vault / 'wiki/projects/example'
+        (docs / 'tasks').mkdir(parents=True)
+        (docs / 'index.md').write_text('# Project')
+        self.task = docs / 'tasks/work.md'
+        self.task.write_text('---\nid: example.work\nstatus: active\n---\n# Work\n## Current Result\nInitial result\n## Next Action\nPerform work')
+        (self.root / '.gitignore').write_text('vault/\n')
+        (self.vault / '.local/harness/projects.json').write_text(json.dumps({'projects': [{
+            'id': 'example', 'root': str(self.root), 'documents': 'wiki/projects/example'}]}))
+        self.code = self.root / 'code.py'
+        self.code.write_text('initial')
+        self.evidence = self.vault / 'wiki/log/result.md'
+        self.evidence.parent.mkdir(parents=True)
+        self.evidence.write_text('# Result\nActual isolated execution evidence')
+        self.key = 'codex:one'
+
+    def bind(self, key=None):
+        return work.bind(self.vault, key or self.key, self.root, 'example.work')
+
+    def begin(self, tool='one', key=None, selected=('code.py',)):
+        return work.begin(self.vault, key or self.key, tool, self.root, selected)
+
+    def finish(self, tool='one', key=None):
+        return work.finish(self.vault, key or self.key, tool)
+
+    def record(self, **kwargs):
+        return work.record(self.vault, self.key, 'wiki/log/result.md', **kwargs)
+
+    def test_code_changes_need_binding_updated_task_and_evidence(self):
+        self.begin()
+        self.code.write_text('changed')
+        self.finish()
+        self.assertIn('work-task-missing', work.status(self.vault, self.key)['issues'])
+        self.bind()
+        with self.assertRaisesRegex(ValueError, 'Task'):
+            self.record()
+        self.task.write_text(self.task.read_text() + '\nCompleted change; next verify integration')
+        with self.assertRaisesRegex(ValueError, 'evidence'):
+            work.record(self.vault, self.key, 'wiki/log/missing.md')
+        result = self.record()
+        self.assertTrue((self.vault / result['evidence']).is_file())
+        self.assertEqual(work.status(self.vault, self.key)['issues'], [])
+
+    def test_recorded_work_becomes_unrecorded_after_another_edit(self):
+        self.bind()
+        self.begin()
+        self.code.write_text('first')
+        self.finish()
+        self.task.write_text(self.task.read_text() + '\nFirst result')
+        self.record()
+        self.begin('two')
+        self.code.write_text('second')
+        self.finish('two')
+        with self.assertRaisesRegex(ValueError, 'Task'):
+            self.record()
+
+    def test_metadata_only_task_change_does_not_satisfy_handoff(self):
+        self.bind()
+        self.begin()
+        self.code.write_text('changed')
+        self.finish()
+        self.task.write_text(self.task.read_text().replace('status: active', 'status: review'))
+        with self.assertRaisesRegex(ValueError, 'handoff'):
+            self.record()
+
+    def test_handoff_updated_before_tool_finishes_does_not_record_later_change(self):
+        self.bind()
+        self.begin()
+        self.task.write_text(self.task.read_text() + '\nPremature handoff')
+        self.code.write_text('later change')
+        self.finish()
+        with self.assertRaisesRegex(ValueError, 'Task'):
+            self.record()
+
+    def test_unknown_tool_window_requires_reconciliation(self):
+        self.bind()
+        self.begin(selected=None)
+        self.code.write_text('cannot prove writer from shell window')
+        self.finish()
+        self.task.write_text(self.task.read_text() + '\nInspected observed result')
+        with self.assertRaisesRegex(ValueError, 'overlap'):
+            self.record()
+
+    def test_drift_during_record_does_not_clear_unrecorded_state(self):
+        from unittest.mock import patch
+        self.bind()
+        self.begin()
+        self.code.write_text('observed')
+        self.finish()
+        self.task.write_text(self.task.read_text() + '\nResult')
+        original = work.manifest
+        calls = []
+        def observing(path):
+            result = original(path)
+            calls.append(True)
+            if len(calls) == 1:
+                self.code.write_text('drift during record')
+            return result
+        with patch.object(work, 'manifest', side_effect=observing):
+            with self.assertRaisesRegex(ValueError, 'drift'):
+                self.record()
+        self.assertIn('work-unrecorded', work.status(self.vault, self.key)['issues'])
+
+    def test_begin_capture_and_registration_do_not_lose_peer_overlap(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Event, Lock
+        from unittest.mock import patch
+        self.bind()
+        self.bind('claude:two')
+        captured, peer_done = Event(), Event()
+        guard = Lock()
+        first = [True]
+        original = work.manifest
+        def observing(path):
+            with guard:
+                outer = first[0]
+                first[0] = False
+            result = original(path)
+            if outer:
+                captured.set()
+                peer_done.wait(0.5)
+            return result
+        def peer():
+            self.begin(key='claude:two')
+            self.code.write_text('peer change')
+            self.finish(key='claude:two')
+            peer_done.set()
+        with patch.object(work, 'manifest', side_effect=observing), ThreadPoolExecutor(max_workers=2) as pool:
+            outer = pool.submit(self.begin)
+            self.assertTrue(captured.wait(2))
+            other = pool.submit(peer)
+            outer.result(timeout=5)
+            other.result(timeout=5)
+        self.finish()
+        self.assertIn('work-ambiguous', work.status(self.vault, self.key)['issues'])
+
+    def test_other_session_changes_do_not_dirty_explicit_read_only_call(self):
+        self.bind()
+        self.begin(selected=())
+        self.code.write_text('foreign change')
+        self.finish()
+        self.assertEqual(work.status(self.vault, self.key)['issues'], [])
+
+    def test_overlap_requires_explicit_reconciliation_and_keeps_owner_limits(self):
+        self.bind()
+        self.bind('claude:two')
+        self.begin()
+        self.begin(key='claude:two')
+        self.code.write_text('overlapping')
+        self.finish()
+        self.finish(key='claude:two')
+        self.task.write_text(self.task.read_text() + '\nReconciled writers and actual result')
+        with self.assertRaisesRegex(ValueError, 'overlap'):
+            self.record()
+        receipt = self.record(reconciliation='Both writers stopped; inspected actual file and Task')
+        body = json.loads((self.vault / receipt['evidence']).read_text())
+        self.assertTrue(body['observations'][0]['ambiguous'])
+        self.assertIn('work-unrecorded', work.status(self.vault, 'claude:two')['issues'])
+
+    def test_interrupted_call_survives_and_recovery_does_not_record_work(self):
+        self.bind()
+        self.begin()
+        self.code.write_text('interrupted')
+        self.assertIn('work-pending', work.status(self.vault, self.key)['issues'])
+        with self.assertRaisesRegex(ValueError, 'pending'):
+            self.record()
+        work.reconcile(self.vault, self.key, 'one', 'Writer termination confirmed; actual files inspected')
+        self.assertIn('work-unrecorded', work.status(self.vault, self.key)['issues'])
+        self.assertNotIn('work-pending', work.status(self.vault, self.key)['issues'])
+
+    def test_changed_observation_cannot_be_recorded_after_unobserved_drift(self):
+        self.bind()
+        self.begin()
+        self.code.write_text('observed')
+        self.finish()
+        self.task.write_text(self.task.read_text() + '\nResult')
+        self.code.write_text('foreign later drift')
+        with self.assertRaisesRegex(ValueError, 'drift'):
+            self.record()
+
+    def test_wrong_task_and_pending_rebinding_are_rejected(self):
+        with self.assertRaises(ValueError):
+            work.bind(self.vault, self.key, self.root, 'different.task')
+        self.bind()
+        self.begin()
+        other = self.task.with_name('other.md')
+        other.write_text('---\nid: example.other\nstatus: active\n---\n# Other')
+        with self.assertRaisesRegex(ValueError, 'unfinished'):
+            work.bind(self.vault, self.key, self.root, 'example.other')
+
+    def test_cli_reports_pending_and_rejects_incomplete_identity(self):
+        import sys
+        self.bind()
+        self.begin()
+        command = [sys.executable, '-m', 'harness', '--root', str(self.vault), 'work', 'status']
+        result = subprocess.run(command + ['--workspace', str(self.root)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('work-pending', json.loads(result.stdout)['issues'])
+        result = subprocess.run(command + ['--agent', 'codex'], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('both', json.loads(result.stderr)['error'])

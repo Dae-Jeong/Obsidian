@@ -30,6 +30,22 @@ def main():
     lookup = sub.add_parser("context")
     lookup.add_argument("workspace", type=Path)
     lookup.add_argument("--task")
+    work = sub.add_parser('work', help='Bind code observations to a central Task and execution evidence')
+    actions = work.add_subparsers(dest='work_command', required=True)
+    binding = actions.add_parser('bind')
+    binding.add_argument('workspace', type=Path)
+    binding.add_argument('--task', required=True)
+    recording = actions.add_parser('record')
+    recording.add_argument('--evidence', required=True)
+    recording.add_argument('--reconciliation')
+    inspection = actions.add_parser('status')
+    inspection.add_argument('--workspace', type=Path)
+    recovery = actions.add_parser('reconcile')
+    recovery.add_argument('--tool', required=True)
+    recovery.add_argument('--reason', required=True)
+    for action in (binding, recording, inspection, recovery):
+        action.add_argument('--agent', choices=('codex', 'claude'), required=action is not inspection)
+        action.add_argument('--session', required=action is not inspection)
     index = sub.add_parser("index")
     query = sub.add_parser("search")
     query.add_argument("query")
@@ -39,7 +55,21 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     try:
-        if args.command == "structure":
+        if args.command == 'work':
+            from harness import work
+            if bool(args.agent) != bool(args.session):
+                raise ValueError('Specify both --agent and --session, or neither for workspace status')
+            key = f'{args.agent}:{args.session}' if args.agent else None
+            if args.work_command == 'bind':
+                result = work.bind(root, key, args.workspace, args.task)
+            elif args.work_command == 'record':
+                result = work.record(root, key, args.evidence, args.reconciliation)
+            elif args.work_command == 'reconcile':
+                result = work.reconcile(root, key, args.tool, args.reason)
+            else:
+                result = work.status(root, key, args.workspace)
+            status = 1 if args.work_command == 'status' and result['issues'] else 0
+        elif args.command == "structure":
             from harness.structure import check_structure, check_file
             if args.file:
                 path = (root / args.file).resolve()

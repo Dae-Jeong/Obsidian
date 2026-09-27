@@ -87,9 +87,66 @@ checkpoint 명령끼리는 POSIX lock으로 동시 실행을 막고, 새 기준�
 | 다른 세션의 변경을 자기 변경으로 오인 | session_id·tool_use_id로 연결한 도구 전후 관측, 명시적 편집 대상 | 전역 revision 변화만으로 변경 주체를 결정하지 않음. 주체가 불명확한 겹친 변경은 미확인으로 남겨 조정 | 읽기 전용 세션과 외부 writer, 서로 다른 파일의 동시 편집, 같은 파일 충돌, 겹친 shell 실행 |
 | 중단 뒤 작업과 기록의 불일치 | 미완료 도구 상태, 실제 파일, 연결된 Task와 기록 근거 | 새 세션에 불일치와 실행할 다음 단계를 노출. 시각만으로 pending을 해제하거나 완료 처리하지 않음 | Pre 이후 중단, 변경 후 기록 전 중단, 실패 이벤트, 명시적 복구 뒤 후속 세션 인수 |
 
-코드 변경의 기록은 Task를 대체하는 별도 진행 원장을 만들지 않습니다. Task는 목적·결과·다음 행동의 정본이고, 실행 증거는 변경 파일 해시와 연결된 Task를 식별합니다. 해시와 연결 상태로 기록 누락·드리프트를 검사하되, 자연어 결과의 진실성을 자동 인증하지 않습니다. 기록 저장 명령·DB 필드·전후 관측 범위는 구현 전 테스트 사례와 함께 확정해야 하며 현재 설치된 기능으로 안내하지 않습니다.
+코드 변경의 기록은 Task를 대체하는 별도 진행 원장을 만들지 않습니다. Task는 목적·결과·다음 행동의 정본이고, 실행 증거는 변경 파일 해시와 연결된 Task를 식별합니다. 해시와 연결 상태로 기록 누락·드리프트를 검사하되, 자연어 결과의 진실성을 자동 인증하지 않습니다. 아래 상태 계약과 테스트가 기록 명령·관측 범위를 소유하며, 실제 훅 연결과 런타임 검증 전에는 자동 강제가 설치됐다고 안내하지 않습니다.
 
 각 확장은 합성 자료에서 위반을 재현하고 회귀 검사를 통과한 뒤 실제 등록 자료에 적용합니다. 훅 확장은 Codex·Claude 각각의 실제 이벤트와 종료 판정을 확인해야 수용합니다. 단위 테스트 수, 설정 파일 존재, 한 번의 정상 실행만으로 전체 수용을 선언하지 않습니다.
+
+### 작업 기록 상태 계약
+
+확장의 명령은 `harness work bind`, `harness work record`, `harness work status`로
+구성합니다. `harness work reconcile`은 중단된 호출의 명시적 조정을 담당합니다.
+bind는 agent·session·실제 workspace와 중앙 Task ID를 연결하고,
+record는 현재 Task와 실행 근거를 변경 관측에 연결합니다. status는 기록 누락과
+인수할 상태를 읽습니다. 이 절은 구현 기준이며 실제 활성 여부는 중앙 Task를 따릅니다.
+
+- 프로젝트는 등록 root 또는 Git common directory로 식별하고 실제 worktree root를
+  별도로 보관합니다. 다른 worktree의 파일 상태를 같은 작업 상태로 합치지 않습니다.
+- 코드 관측 범위는 해당 worktree의 Git tracked 파일과 ignore되지 않은 untracked
+  파일입니다. 파일 bytes·실행 권한·symlink의 링크 문자열을 해시로 비교합니다.
+  symlink 대상과 submodule 내부는 따라가지 않습니다. Git-ignored 중앙 문서는
+  기존 문서 검사와 checkpoint가 담당합니다. 비 Git 작업 공간은 코드 검사 지원
+  대상으로 조용히 통과시키지 않고 명시적으로 진단합니다.
+- bind는 등록 프로젝트 안의 단일 Task를 확인하고 최초 Task 해시를 기록합니다.
+  미기록 변경이 있는 연결은 다른 Task로 덮어쓸 수 없습니다. 완료된 기록과
+  실행 근거는 Log에 남고 Task 본문을 별도 진행 원장으로 복제하지 않습니다.
+- PreToolUse는 session_id·tool_use_id와 관측 전 파일 해시를 저장합니다. Post는
+  동일 도구 호출과 연결합니다. 명시적 편집은 실제 대상의 변화만 자기 편집으로
+  귀속합니다. shell처럼 범위가 불명확한 도구는 관측된 변화를 기록하되, 겹친 호출과
+  외부 변경 때문에 귀속이 입증되지 않으면 미확인 상태로 둡니다. 대상이 불명확한
+  도구의 변경은 겹친 호출이 없어도 observed-window·ambiguous로 기록합니다. 도구
+  관측 전 해시 캡처와 pending 등록은 같은 SQLite 쓰기 transaction 안에서 다른
+  훅의 등록과 조정합니다.
+- record는 변경 도구의 종료 관측 이후 Task 해시 갱신과 존재하는 실행 근거를 요구합니다. 기록은
+  Task ID·경로·해시, worktree, 관측된 파일 해시와 귀속 한계를 연결합니다. Task를
+  갱신하지 않았거나 근거가 없으면 실패합니다. 변경이 없으면 무의미한 기록을
+  만들지 않습니다. 상태·날짜 등 메타데이터만 바꿔서는 통과하지 않으며 기존 Task
+  계약의 결과·다음 행동 내용에 변화가 있어야 합니다. 이것도 내용의 진실성 증명은 아닙니다.
+- Stop은 자기 세션의 미기록 관측·미완료 호출을 검사합니다. 전역 문서 revision만
+  달라졌다는 이유로 다른 세션의 코드를 자기 작업으로 기록시키지 않습니다.
+  기록 뒤 자기 도구가 다시 변경하면 새 기록이 필요합니다.
+- 중단된 호출은 관측 상태를 보존합니다. 새 세션의 context/status는 같은 프로젝트의
+  미완료 작업과 Task를 보여 줍니다. 실제 writer 종료와 현재 파일을 대조한 명시적
+  복구만 호출을 해제하며, 시간이 지났다는 이유로 자동 완료하지 않습니다.
+
+구현 검증은 코드 추가·수정·삭제·symlink·실행 권한, ignored 파일, worktree 분리,
+Task 오연결, 갱신 없는 record, 근거 누락, 기록 후 재편집, 동시 호출과 중단·인수를
+각각 포함합니다. native 런타임 검증 전에는 이 절을 설치 완료로 안내하지 않습니다.
+
+작업 연결과 기록 명령은 다음 형태입니다. hook이 tool_use_id별 관측을 생성하도록
+연결하는 작업은 별도 수용 대상입니다. CLI 명령이 있다는 사실만으로 자동 관측을
+설치 완료로 취급하지 않습니다.
+
+```sh
+uv run python -m harness work bind /absolute/project/path --task TASK_ID --agent codex --session SESSION_ID
+uv run python -m harness work status --workspace /absolute/project/path
+uv run python -m harness work record --agent codex --session SESSION_ID --evidence wiki/log/RUN/result.md
+uv run python -m harness work reconcile --agent codex --session SESSION_ID --tool TOOL_USE_ID --reason 'Actual writer termination and workspace findings'
+```
+
+상태는 기존 hook-state.sqlite의 work_sessions·work_calls에 저장합니다. 겹친 변경의
+record에는 `--reconciliation`으로 실제 조정 결과를 기록합니다. 이것은 원래 작성자를
+입증하는 인증이 아니며 receipt에도 ambiguous와 관측 범위가 남습니다. record는
+현재 파일과 마지막 관측 결과가 다르면 거부하고 기존 미기록 상태를 유지합니다.
 
 ## 근거
 
