@@ -1,0 +1,117 @@
+# Document Workflow
+
+This document explains the executable workflow for current Markdown, historical
+Log records and local retrieval. The [shared work policy](../../wiki/notes/agents/work-management-policy.md)
+owns mandatory gates W01–W06, failure handling and acceptance requirements.
+Markdown is canonical; search indexes are disposable. Hook execution state is not a search cache.
+
+The [central hook adapter](agent-hooks-design.md) connects Codex and Claude to
+one entry point, with preservation gates and bounded stop validation.
+Installation, runtime trust and execution evidence are separate checks.
+
+## Layout
+
+- `wiki/profile.md`: confirmed working preferences.
+- `wiki/notes/`: reusable current knowledge and shared rules.
+- `wiki/projects/<project>/`: project entry, Tasks and relevant reviews.
+- `wiki/sources/`: original evidence and attachments with provenance.
+- `wiki/log/` and `wiki/log/index.md`: before-state, reasons, attempts and validation evidence.
+- `harness/`: executable preservation, validation, context and retrieval workflow.
+- `tests/`: synthetic regression tests.
+- `docs/`: installation, usage and implementation documentation.
+- `.local/harness/`: machine registry, preservation checkpoint, hook execution state and derived search indexes.
+
+Project code and executable product contracts stay in their repositories.
+Product task IDs remain stable. Current documents contain applicable content;
+prior wording and change narratives belong in Log.
+
+## Commands
+
+Run from the vault root after `uv sync --locked`:
+
+```sh
+uv run python -m harness check
+uv run python -m harness snapshot wiki/notes/example.md --reason 'Explain the change'
+uv run python -m harness verify wiki/log/<record>
+uv run python -m harness checkpoint
+uv run python -m harness search 'query'
+uv run python -m harness search 'historical question' --scope history
+uv run python -m harness search 'original evidence' --scope sources
+uv run python -m harness catalog --output wiki/log/<new-register-record>
+uv run python -m unittest discover -s tests -v
+```
+
+`check` returns nonzero when the document contract fails. Fix diagnostics before
+reporting the document change complete. Format/link checks do not verify factual
+claims or replace applicable product tests and reviews.
+
+After the initial corpus setup, initialize its local baseline once with
+`uv run python -m harness checkpoint --initialize`. Subsequent work uses
+`snapshot → edit → check → checkpoint`. Check rejects edits or deletions without
+the exact checkpoint before-state in a hash-verified Log snapshot, interrupted
+migration journals, and invalid names for newly added current documents.
+Checkpoint advances the baseline only after validation and a corpus-drift check.
+Existing stable Task paths retain their names. The local baseline is part of the
+machine setup; it is not a tamper-proof security boundary.
+
+Normal checks reject a missing or malformed checkpoint. Only explicit first-time
+`checkpoint --initialize` permits an absent baseline, while still validating
+documents and publication state. It is not a recovery command for a lost baseline.
+Current search, index building and context reject prepared or malformed publication
+journals, and recheck publication state before returning results. Context requires
+an existing workspace and a registered document directory with index.md inside the
+vault. History and source retrieval remain available for evidence investigation.
+
+The project registry, checkpoint and hook-state.sqlite are required machine state. Only the three
+SQLite indexes are disposable. Reports and before-state belong in wiki/log;
+original evidence belongs in wiki/sources. Root layout checks include hidden entries and empty directories. Current retrieval
+and Task validation cover wiki/notes and wiki/projects; sources and historical Log
+are separate scopes. The independent orchestration submodule is a runtime boundary.
+
+Recognizable process headings such as Previous Version, Changelog and 작업 로그
+are rejected in current documents. This catches explicit historical sections;
+semantic obsolescence still requires reading the source and current owner.
+
+Search returns bounded sections and discloses truncation. Read the complete Task
+before resuming work. Whole-corpus hashes detect additions, edits, moves and
+deletions; stale indexes rebuild locally. Current queries exclude wiki/sources and Log.
+
+## Document Register
+
+`catalog` creates a new Log record containing a full JSON inventory and a
+searchable HTML view of current documents, companions and source-domain owner
+candidates. It includes hidden files and attachments, keeps original/history
+material separate, and never follows symlinks or changes source metadata.
+
+The register separates declared content-update dates, explicit review records,
+source capture dates, generation dates and filesystem mtime. An unspecified
+timestamp stays unspecified. Missing dates remain unknown; mtime is never used
+to certify semantic freshness. Review records are declarations, not fresh source
+verification. Only an explicit stale_after date triggers a due-date finding.
+
+Metadata-key corruption, malformed dates, ambiguous domain boundaries and
+missing embedded graph file references are review flags. Flags do not authorize
+automatic deletion or bulk date updates. Existing Log exports are immutable;
+rerun into a new directory and update the current register entry after preserving
+its before-state.
+
+## Migration
+
+Prepare a manifest of exact source/target paths and expected hashes before moving
+documents. The migration command rejects changed inputs and colliding targets,
+preserves full originals in Log, prepares candidates, writes all targets and only
+then removes original owners. Its journal supports explicit resume after an
+interruption. Readers must wait for the batch's applied state and validation.
+Multi-file loose-file refresh is not an atomic filesystem transaction.
+
+Sources and historical snapshots retain exact bytes. Their relative links retain
+the original source-path context recorded in the manifest. Current documents have
+their link targets updated. Required project integrations must resolve to the
+same central owner; never copy an editable task body into a second repository.
+
+## Rule Enforcement
+
+This is CI-style validation used by agents and local commands. No administrator
+service is required. The rules require clients to preserve history and pass
+checks; they do not prevent arbitrary filesystem edits by the same user.
+Natural-language correctness and latest-only meaning require a content review.

@@ -1,12 +1,11 @@
-# LLM Wiki Agent Entry
+# Agent Entry
 
-1. Read `/Users/marin/AGENTS.md`, then `Wiki/meta/agents/README.md` and its `_map.md`. Machine-local paths stay in machine or project files; global behavior stays in the global agent wiki.
-2. Read this `README.md`, `_map.md`, and the relevant `Operations/<product>/index.md` before making project claims. Follow source links and read the target project's nearest `AGENTS.md` before operating there.
-3. `Wiki/` and `Operations/` are canonical. The former root `SoT/`, `Projects/`, `Tasks/`, `Results/`, `Knowledge/`, `Inbox/`, and `Catalog/` paths were retired on 2026-09-11; use the direct current owner recorded in `_map.md`.
-4. Preserve original structure, body, attachments, links, dates, approval/failure history, and uncertainty. Copy and hash-verify before switching an owner or compatibility facade; an index or summary is not a substitute for migration.
-5. Keep personal material in the Git-ignored local paths described by `README.md`. Never force-add or publish it during routine work. `Wiki/meta/catalog/` proves inventory only; it does not prove content was read, verified, or current.
-6. Product task IDs and filenames remain stable in `Operations/<product>/tasks/`; completed work stays at the same path. Update an existing task, review, or product index before creating a duplicate.
-7. Paperclip owns issue status, assignee, priority, and blockers; Orca owns execution attempts; repositories own code, implemented contracts, servers, and raw evidence. There is no automatic issue or document sync, and Wiki prose or a worker report does not prove runtime state or authorize infrastructure changes.
-8. Every review/result records source links, checked date, verification status, limits, and remaining work. Never promote historical records or file-copy checks to current factual verification.
-9. `orchestration/` is an independent Git submodule. Read its `AGENTS.md` and `README.md`; do not modify its Git state from this vault migration. Commit child changes in the child repository and record only a verified child commit in the parent; preserve separate external checkouts and their dirty work.
-10. `_map.md` owns canonical locations; `Operations/llm-wiki/index.md` routes current work, and its linked tasks/reviews own migration scope, verification limits, and remaining work. The migrated `Wiki/sources/basic-memory/` remains the logical owner of durable decisions and feedback; source archives are not automatically curated or OKF-conformant.
+1. Read `/Users/marin/.agents/AGENTS.md`, [global entry](wiki/notes/agents/index.md), and the [shared work policy](wiki/notes/agents/work-management-policy.md).
+2. Read [README.md](README.md), including File Naming and Document Lifecycle, then [wiki/index.md](wiki/index.md) and the relevant project index/Task.
+3. Current owners are `wiki/profile.md`, `wiki/notes/` and `wiki/projects/`. Original evidence is in `wiki/sources/`; process and before-state belong in `wiki/log/`. Product repositories own code, executable contracts and raw evidence.
+4. Before editing, preserve full bytes with `uv run python -m harness snapshot ... --reason '...'`. Verify the record and update links with the owner change. Do not leave duplicate editable bodies or removed-content notices.
+5. Run `uv run python -m harness check` before reporting document changes complete. Fix errors; record actual evidence and remaining limits. Script success does not establish factual truth.
+6. Use `uv run python -m harness context /absolute/project/path` for registered project discovery and `--task ID` for the full Task. Reconcile actual workspace and other writers before continuing. Keep stable Task IDs and paths.
+7. Use `uv run python -m harness search 'query'` for current retrieval. Select `--scope history` or `--scope sources` only when needed. Read the resulting owner and assess applicability.
+8. Keep personal content, logs, configuration, indexes and credentials out of public Git. Never force-add private paths.
+9. Preserve unrelated dirty work. The independent `orchestration/` submodule has its own AGENTS.md and README.md; do not fold its changes into the parent.

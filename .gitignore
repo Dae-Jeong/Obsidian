@@ -19,11 +19,7 @@
 .trash/
 
 # Personal LLM Wiki content stays local.
-/_map.md
-/Home.md
-/Sources.md
-/AGENTS.local.md
-/Wiki/
-/Operations/
+/wiki/
 /.local/
 __pycache__/
+/.venv/

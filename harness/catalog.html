@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>문서 관리 현황</title>
+<style>
+:root{color-scheme:light;--ink:#203039;--muted:#5d6b72;--line:#dae2e5;--accent:#176a63}
+*{box-sizing:border-box}body{margin:0;background:#f4f7f7;color:var(--ink);font:15px/1.6 system-ui,sans-serif}
+main{max-width:1600px;margin:auto;padding:40px 28px}h1{font-size:32px;letter-spacing:-1px;margin:0}p{margin:8px 0 20px;color:var(--muted)}
+.cards{display:flex;flex-wrap:wrap;gap:12px;margin:24px 0}.card{background:white;border:1px solid var(--line);border-radius:12px;padding:16px 22px;min-width:190px}.card strong{display:block;font-size:28px;color:var(--accent)}
+.controls{display:flex;flex-wrap:wrap;align-items:end;gap:14px;margin:20px 0}label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+input,select,button{font:inherit;border:1px solid #bccacc;border-radius:6px;padding:9px;background:white;color:var(--ink)}input{min-width:300px}button{cursor:pointer}button:disabled{opacity:.4;cursor:default}
+.table{overflow:auto;background:white;border:1px solid var(--line);border-radius:10px}table{border-collapse:collapse;width:100%;min-width:1100px}th,td{text-align:left;vertical-align:top;padding:13px;border-bottom:1px solid var(--line)}th{background:#eaf1f1;font-size:13px}td{font-size:13px}td:first-child{width:31%}a{color:var(--accent)}small{display:block;color:var(--muted);overflow-wrap:anywhere}.badge{display:inline-block;background:#fff4dd;color:#76571b;padding:2px 7px;border-radius:5px;margin:2px;font-size:11px}
+details{max-width:320px}summary{cursor:pointer;color:var(--muted)}pre{white-space:pre-wrap;word-break:break-word;font:12px/1.5 monospace}.pager{display:flex;align-items:center;gap:12px;margin:18px 0}.note{padding:15px;border-left:3px solid var(--accent);background:#edf4f2}
+@media(max-width:600px){main{padding:24px 14px}h1{font-size:26px}input{min-width:240px}.card{min-width:140px;flex:1}}
+</style>
+<main><h1>문서 관리 현황</h1><p id="stamp"></p>
+<div class="note">수정·검토 날짜는 문서에 적힌 기록입니다. 최근 파일 변경이나 최근 검토일만으로 내용의 정확성과 최신성을 보증하지 않습니다. ‘미기록’은 오래되었다는 뜻이 아니라 판단 근거가 없다는 뜻입니다.</div>
+<div class="cards" id="cards"></div>
+<div class="controls">
+<label>제목·경로·역할 검색<input id="query" type="search" placeholder="예: FHIR, application-registry, task"></label>
+<label>영역<select id="scope"><option value="">관리 대상 전체</option></select></label>
+<label>확인할 항목<select id="flag"><option value="">전체</option></select></label>
+<label>정렬<select id="sort"><option value="path">경로순</option><option value="review">검토일 오래된 순 · 미기록 먼저</option><option value="updated">내용 수정일 오래된 순 · 미기록 먼저</option><option value="flags">확인 항목 많은 순</option></select></label>
+</div><p id="counts" aria-live="polite"></p>
+<div class="table"><table><thead><tr><th>문서와 역할</th><th>영역</th><th>내용 수정일<br>문서 기록</th><th>검토 기록일</th><th>원본 수집일</th><th>확인할 항목 · 날짜 근거</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="pager"><button id="prev">이전</button><span id="page"></span><button id="next">다음</button></div>
+<p>원본·Log·동결 자료는 기본 표에서 분리했습니다. 첨부와 숨김 자료를 포함한 전체 목록은 <a href="catalog.json">catalog.json</a>에 있습니다. 이 화면은 생성 시점의 조회 결과이며 개별 문서의 정본을 대신하지 않습니다.</p>
+<noscript>검색 표를 보려면 JavaScript가 필요합니다. 전체 목록은 catalog.json에서 확인할 수 있습니다.</noscript>
+</main>
+<script id="data" type="application/json">CATALOG_PAYLOAD</script>
+<script>
+const data=JSON.parse(document.getElementById('data').textContent),$=id=>document.getElementById(id);let page=0;const size=100;
+const scopes=['current','current-companion','domain-owner-candidate'];
+$('stamp').textContent='생성 시각 '+data.generated_at+' · 원본 파일 및 날짜는 수정하지 않았습니다.';
+for(const [title,value] of [['관리 대상 후보',data.summary.managed_candidates],['검토일 기록 있음',data.summary.review_recorded],['내용 수정일 기록 있음',data.summary.content_date_recorded],['전체 파일',data.summary.all_files]]){const card=document.createElement('div');card.className='card';card.textContent=title;const strong=document.createElement('strong');strong.textContent=value.toLocaleString();card.append(strong);$('cards').append(card)}
+for(const scope of scopes){const o=document.createElement('option');o.value=scope;o.textContent=data.labels[scope];$('scope').append(o)}
+for(const key of Object.keys(data.summary.managed_flags).sort()){const o=document.createElement('option');o.value=key;o.textContent=(data.flags[key]||key)+' ('+data.summary.managed_flags[key]+')';$('flag').append(o)}
+function filtered(){const q=$('query').value.trim().toLocaleLowerCase();let rows=data.rows.filter(r=>(!q||(r.title+' '+r.path+' '+r.role).toLocaleLowerCase().includes(q))&&(!$('scope').value||r.scope===$('scope').value)&&(!$('flag').value||r.flags.includes($('flag').value)));
+const sort=$('sort').value;return rows.sort((a,b)=>sort==='flags'?b.flags.length-a.flags.length||a.path.localeCompare(b.path):sort==='review'?(a.review_recorded||'').localeCompare(b.review_recorded||'')||a.path.localeCompare(b.path):sort==='updated'?(a.content_updated_declared||'').localeCompare(b.content_updated_declared||'')||a.path.localeCompare(b.path):a.path.localeCompare(b.path))}
+function render(){const rows=filtered();page=Math.min(page,Math.max(0,Math.ceil(rows.length/size)-1));$('rows').replaceChildren();$('counts').textContent=rows.length+'개 문서 · '+data.rows.length+'개 관리 대상 후보 중';
+for(const r of rows.slice(page*size,(page+1)*size)){const tr=document.createElement('tr');let cell=document.createElement('td');const a=document.createElement('a');a.href=r.url;a.textContent=r.title;cell.append(a);for(const text of [r.path,'역할: '+r.role+' · '+(r.role_origin==='metadata'?'문서 선언':'경로 추정')+(r.status?' · 상태: '+r.status:'')]){const s=document.createElement('small');s.textContent=text;cell.append(s)}tr.append(cell);
+for(const text of [data.labels[r.scope],r.content_updated_declared||'미기록',r.review_recorded||'미기록',r.captured_declared||'미기록']){cell=document.createElement('td');cell.textContent=text;tr.append(cell)}
+cell=document.createElement('td');for(const flag of r.flags){const span=document.createElement('span');span.className='badge';span.textContent=data.flags[flag]||flag;cell.append(span)}const details=document.createElement('details'),summary=document.createElement('summary'),pre=document.createElement('pre');summary.textContent='날짜·파일 근거';pre.textContent=JSON.stringify({dates:r.date_evidence,file_mtime_utc:r.file_mtime_utc,verification:r.verification_declared,sha256:r.sha256,missing_files:r.missing_embedded_files},null,2);details.append(summary,pre);cell.append(details);tr.append(cell);$('rows').append(tr)}
+$('page').textContent=(page+1)+' / '+Math.max(1,Math.ceil(rows.length/size));$('prev').disabled=page===0;$('next').disabled=(page+1)*size>=rows.length}
+const params=new URLSearchParams(location.search);for(const id of ['query','scope','flag','sort']){if(params.has(id))$(id).value=params.get(id);$(id).addEventListener(id==='query'?'input':'change',()=>{page=0;render()})}$('prev').addEventListener('click',()=>{page--;render()});$('next').addEventListener('click',()=>{page++;render()});render();
+</script></html>
