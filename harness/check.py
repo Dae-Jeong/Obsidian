@@ -11,6 +11,7 @@ from harness.anchors import fragment_issue
 from harness.checkpoint import issues as preservation_issues
 from harness.layout import issues as layout_issues
 from harness.structure import enabled as structure_enabled, validate as validate_structure
+from harness import domains
 
 
 STATUSES = {"ready", "active", "blocked", "review", "done", "cancelled"}
@@ -57,9 +58,16 @@ def check(root, strict_tasks=True, *, initialize=False):
     tasks = {}
     def error(path, code, message):
         issues.append({"path": str(path), "code": code, "message": message})
-    for path in paths(root):
+    owners = set(paths(root))
+    try:
+        owners.update(domains.paths(root))
+    except (ValueError, OSError, yaml.YAMLError) as exc:
+        error('.local/harness/projects.json', 'domain-selection', str(exc))
+    for path in sorted(owners):
         rel = path.relative_to(root).as_posix()
         try:
+            if path.suffix != '.md':
+                list(domains.sections(path, path.read_bytes()))
             doc = parse(rel, path.read_bytes())
         except (ValueError, UnicodeError, yaml.YAMLError) as exc:
             error(rel, "metadata", str(exc))

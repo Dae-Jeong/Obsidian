@@ -30,6 +30,10 @@ def role(root, path):
     if excluded(name) or name.startswith('orchestration/'):
         return 'outside'
     if name.startswith(('wiki/log/', 'wiki/sources/')):
+        if name.startswith('wiki/sources/'):
+            from harness.domains import paths as domain_paths
+            if any(path.resolve() == owner.resolve() for owner in domain_paths(root)):
+                return 'current'
         return 'evidence'
     if name in {'README.md', 'AGENTS.md', 'wiki/index.md', 'wiki/profile.md'} or name.startswith(('wiki/notes/', 'wiki/projects/', 'docs/')):
         return 'current'

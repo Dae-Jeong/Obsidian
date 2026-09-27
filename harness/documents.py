@@ -114,6 +114,9 @@ def protected_paths(root):
 
 def fingerprint(root, scope="current"):
     h = hashlib.sha256()
+    registry = root / '.local/harness/projects.json'
+    if scope == 'current' and registry.exists():
+        h.update(registry.read_bytes())
     for p in (protected_paths(root) if scope == "current" else sorted(paths(root, scope))):
         h.update(p.relative_to(root).as_posix().encode())
         h.update(b"\0")

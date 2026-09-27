@@ -97,6 +97,55 @@ Local Markdown/Obsidian fragments are checked against target headings or explici
 IDs, including fragments into preserved evidence and HTML IDs. External URL
 fragments and runtime rendering are not verified by this check.
 
+### Explicit Current-Domain Selection
+
+`current_domains` in projects.json selects current owners within an existing
+`protected_roots` registration. This is opt-in; the live domain classification,
+cleanup and product validation must precede enabling it. Registration alone does
+not select every preserved file. A generic configuration has this shape:
+
+```json
+{
+  "root": "wiki/sources/example/wiki",
+  "include": ["profile/**", "registry.yaml"],
+  "exclude": ["**/originals/**", "**/submissions/**"],
+  "collections": [{
+    "registry": "registry.yaml",
+    "items": "attempts",
+    "path_field": "current_source_path",
+    "fallback_path_field": "source_path",
+    "strip_prefix": "wiki/",
+    "where": {"status": ["active"], "artifact_state": ["mutable"]},
+    "include": ["*.md"],
+    "exclude": []
+  }]
+}
+```
+
+Each domain requires root/include/exclude; collections is optional. A collection
+requires registry/items/path_field/where/include/exclude; fallback_path_field and
+strip_prefix are optional. Unknown keys and malformed field types are errors,
+including when no record currently matches. Paths are normalized relative paths;
+selection cannot escape its domain or follow symlinks. The domain must exist.
+
+Domain include/exclude patterns are relative to its root. Every collection
+condition must match; the named registry field then identifies an existing owner
+file. Only a missing current path uses the optional fallback. Collection patterns
+are relative to that owner's parent; `*.md` does not recursively select revision
+or submission subdirectories. Domain exclusions apply after the union of explicit
+and collection selections, so a registry entry cannot override an excluded area.
+Allowed record states come from the product's lifecycle contract, not a shared
+assumption that all projects use the same states.
+
+Selected Markdown receives current link/history checks and section retrieval.
+Selected JSON/YAML must be a mapping or list and is indexed by top-level groups
+and mapping records. That syntax check does not validate the product schema or
+facts. Selected owners use current-document snapshot gates in the shared adapter;
+unselected source material retains evidence protection. Registry and selector
+changes invalidate the current index. The product validator remains responsible
+for lifecycle transitions, frozen payload integrity and the correctness of owner
+pointers. Current-scope selection does not certify freshness or replace review.
+
 `structure [file]` checks the [role templates](document-templates.md) and returns
 nonzero for missing required sections, unresolved template variables, invalid
 role metadata and invalid review dates. Optional template sections can be omitted.

@@ -10,6 +10,7 @@ import yaml
 
 from harness.documents import Document, fingerprint, parse, paths, sections
 from harness.readiness import ensure_readable
+from harness import domains
 
 
 def build(root, database, scope="current"):
@@ -23,9 +24,17 @@ def build(root, database, scope="current"):
         with closing(sqlite3.connect(temporary)) as db:
             db.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
             db.execute("CREATE TABLE sections (path TEXT, title TEXT, heading TEXT, body TEXT, hash TEXT)")
-            for path in paths(root, scope):
+            owners = set(paths(root, scope))
+            if scope == 'current':
+                owners.update(domains.paths(root))
+            for path in sorted(owners):
                 rel = path.relative_to(root).as_posix()
                 raw = path.read_bytes()
+                if path.suffix != '.md':
+                    sha = hashlib.sha256(raw).hexdigest()
+                    for heading, body in domains.sections(path, raw):
+                        db.execute('INSERT INTO sections VALUES (?,?,?,?,?)', (rel, path.stem, heading, body, sha))
+                    continue
                 try:
                     doc = parse(rel, raw)
                 except (ValueError, UnicodeError, yaml.YAMLError):
