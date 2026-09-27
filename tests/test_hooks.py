@@ -70,6 +70,25 @@ class HookTests(unittest.TestCase):
         self.event(event='PostToolUseFailure')
         self.assertFalse(pending_issues(self.root))
 
+    def test_unchanged_failed_edit_can_release_pending_during_unrelated_repair(self):
+        snapshot(self.root, ['wiki/notes/owner.md'], 'update')
+        self.event('codex')
+        other = self.doc.with_name('other.md')
+        other.write_text('# Other\n[broken](missing.md)')
+        result = recover(self.root, 'codex', 'one', unchanged_only=True)
+        self.assertEqual(result['reconciled'], 1)
+        self.assertFalse(result['document_check_ok'])
+        self.assertFalse(pending_issues(self.root))
+        self.assertEqual(self.event('codex', event='Stop')['decision'], 'block')
+
+    def test_unchanged_recovery_rejects_actual_edit(self):
+        snapshot(self.root, ['wiki/notes/owner.md'], 'update')
+        self.event('codex')
+        self.doc.write_text('# Changed')
+        with self.assertRaisesRegex(ValueError, 'changed'):
+            recover(self.root, 'codex', 'one', unchanged_only=True)
+        self.assertTrue(pending_issues(self.root))
+
     def test_repeated_failure_stops_continuation_without_passing(self):
         self.event(event='SessionStart')
         self.doc.write_text('# Owner\n[bad](missing.md)')

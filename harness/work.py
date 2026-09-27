@@ -148,7 +148,7 @@ def bind(root, key, workspace, task):
     return status(root, key)
 
 
-def begin(root, key, tool, workspace, selected=None):
+def begin(root, key, tool, workspace, selected=None, on_begin=None):
     if not isinstance(tool, str) or not tool:
         raise ValueError('Paired code observation requires tool_use_id')
     if selected is not None:
@@ -172,6 +172,8 @@ def begin(root, key, tool, workspace, selected=None):
         db.execute("INSERT INTO work_calls(session,tool,before_state,targets,task_hash,state,ambiguous,handoff_hash) VALUES (?,?,?,?,?,'pending',?,?)",
                    (key, tool, json.dumps(before), json.dumps(selected) if selected is not None else None,
                     task_hash(root, session), int(ambiguous), handoff_hash(root, session['task_path'])))
+        if on_begin is not None:
+            on_begin(db)
     return {'pending': tool}
 
 
@@ -211,8 +213,13 @@ def reconcile(root, key, tool, reason):
                        (json.dumps(inspected), reason, task_hash(root, session),
                         handoff_hash(root, session['task_path']), call['id']))
             db.commit()
+            from harness.hooks import reconcile_pair
+            reconcile_pair(root, key, tool)
             return status(root, key)
-    return finish(root, key, tool, reconciliation=reason)
+    result = finish(root, key, tool, reconciliation=reason)
+    from harness.hooks import reconcile_pair
+    reconcile_pair(root, key, tool)
+    return result
 
 
 def evidence_hash(root, evidence):

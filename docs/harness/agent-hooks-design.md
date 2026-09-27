@@ -36,7 +36,7 @@ verification: adapter-tested-runtime-activation-reviewed-separately
 
 Codex apply_patch의 추가·수정·삭제·이동 경로, Claude Edit·Write·MultiEdit의 경로를 해석합니다. 실제 경로 기준으로 판정하므로 외부 저장소에서 중앙 문서를 절대 경로로 편집해도 검사합니다. 제외 경로와 중앙 문서 밖의 명시적 대상은 이 검사에 포함하지 않습니다.
 
-기존 파일은 **현재 bytes와 같은 해시의 snapshot**이 있어야 편집할 수 있습니다. 생성 전에는 이름을 검사합니다. 기존 Sources·Log 원문은 일반 편집 경로에서 거부하며 도메인별 보존 절차로 안내합니다. 이는 Sources 내부 활성 도메인 원장 지원 완료를 뜻하지 않습니다.
+기존 파일은 **현재 bytes와 같은 해시의 snapshot**이 있어야 편집할 수 있습니다. 생성 전에는 이름을 검사합니다. 명시적 current_domains 설정으로 선택한 Sources 내 활성 owner도 같은 편집 검사를 받습니다. 선택되지 않은 Sources·Log 원문은 일반 편집 경로에서 거부하며 도메인별 보존 절차로 안내합니다.
 
 기존 `snapshot → verify → edit → check → checkpoint` 절차를 사용합니다. 이미 유효하지 않은 문서도 올바르게 보존한 복구 편집은 허용합니다. 읽기·snapshot·검증 명령을 전체 오류 때문에 일괄 차단하지 않습니다.
 
@@ -54,7 +54,13 @@ Codex apply_patch의 추가·수정·삭제·이동 경로, Claude Edit·Write·
 uv run python -m harness.hooks --agent claude --recover-session SESSION_ID
 ```
 
-이 명령은 check를 통과해야 pending을 해제하며 Log에 조정 근거를 남깁니다. 오래된 시각만으로 자동 인수하지 않습니다. 데이터베이스는 삭제 가능한 검색 캐시가 아닙니다. 손실 시 Log와 실제 파일을 대조해야 하며 현재 자동 재구성 기능은 없습니다.
+이 명령은 check를 통과해야 pending을 해제하며 Log에 조정 근거를 남깁니다. 실패한
+도구가 실제 파일을 전혀 바꾸지 않은 경우에는 `--unchanged-only`로 pending에 저장된
+모든 직전 해시와 현재 파일을 대조해 해제할 수 있습니다. 하나라도 다르면 거부합니다.
+이 경로는 다른 문서의 오류를 지우거나 checkpoint를 갱신하지 않고 검사 실패를
+결과에 유지합니다. 오래된 시각만으로 자동 인수하지 않습니다. 데이터베이스는 삭제
+가능한 검색 캐시가 아닙니다. 손실 시 Log와 실제 파일을 대조해야 하며 현재 자동
+재구성 기능은 없습니다.
 
 ## 설치와 활성 확인
 
@@ -68,15 +74,38 @@ uv run python -m harness.install_hooks
 
 명시적 편집 도구의 보존 누락·명명 오류·미완료 편집 충돌은 사전 차단 대상입니다. 등록 프로젝트의 shell 실행 등에서 중앙 Markdown 변화가 감지되면 사후와 종료 검사로 보존 위반을 찾습니다. **임의 shell·MCP·외부 편집기의 모든 쓰기를 사전 차단하는 시스템은 아닙니다.** 훅 미실행·미신뢰·실행 파일 부재·런타임 시간 초과도 OS 수준에서 막지 못합니다.
 
-check의 문서 구조·링크 검사 대상은 current Markdown입니다. fingerprint와 checkpoint의 해시 보존 대상은 현재 영역의 HTML·YAML·JSON 부속 파일 및 등록한 Dae-Jeong 도메인도 포함합니다. 이것이 각 형식의 내용·도메인 스키마 검증이나 현재 검색 포함을 뜻하지는 않습니다. 다른 세션의 변화를 관측할 수 있으므로 자기 작업 증거로 자동 귀속하지 않습니다. Task의 실제 갱신·완료 근거와 최신성은 내용 검토를 유지합니다.
+check는 current Markdown의 메타데이터·링크와 선택된 YAML·JSON의 구문·중복 키를 검사합니다. fingerprint와 checkpoint의 해시 보존 대상은 현재 영역의 HTML·YAML·JSON 부속 파일 및 등록한 Dae-Jeong 도메인도 포함합니다. 도메인별 내용 스키마와 사실의 정확성을 인증하지는 않습니다. current_domains로 선택된 owner만 기본 검색에 포함합니다. Task의 실제 갱신·완료 근거와 최신성은 내용 검토를 유지합니다.
 
 checkpoint 명령끼리는 POSIX lock으로 동시 실행을 막고, 새 기준에 들어가는 변경·신규 파일의 전체 bytes를 보존·검증한 뒤 기준을 전진시킵니다. 다른 세션이 중간 상태를 기준에 포함해도 해당 bytes가 Log에 남습니다. 편집 도구는 여전히 직전 현재 bytes의 보존 여부를 확인합니다.
 
-남은 구현은 활성 도메인의 검색·편집 경계와 형식별 내용 검증, 구조화된 후보 적용 명령, 전체 writer와 게시의 원자적 동기화, 실행 상태 손실 복구입니다. pending과 checkpoint 명령 잠금은 다중 파일 트랜잭션이나 임의 외부 writer 잠금이 아닙니다. 전역 revision 변화만으로 실제 변경 세션을 식별할 수도 없습니다.
+활성 도메인의 검색·편집 경계는 구현돼 있습니다. 형식별 의미 검증, 전체 writer와 게시의 원자적 동기화, 실행 상태 손실 복구는 보장하지 않습니다. pending과 checkpoint 명령 잠금은 다중 파일 트랜잭션이나 임의 외부 writer 잠금이 아닙니다. 전역 revision 변화만으로 실제 변경 세션을 식별할 수도 없습니다.
 
 설치·네이티브 실행·미확인 범위는 [구현 증거](../../wiki/log/20260927T041642Z-2b3230c3/README.md), 전체 수용은 [기존 Task](../../wiki/projects/llm-wiki/tasks/shared-task-harness.md)가 소유합니다.
 
 ## 확장 설계와 수용 조건
+
+### 코드 작업 어댑터의 활성 조건
+
+`.local/harness/projects.json`의 `work_contract: 1`은 아래 코드 작업 관측을 켭니다.
+현재 운영 설정에는 아직 활성화하지 않았으며, 실제 Codex·Claude 실행 검증이 남아
+있습니다. 기본 문서 어댑터의 전역 revision 감지와 아래 호출별 관측을 구분합니다.
+설정을 꺼도 이미 관측된 세션의 미완료 기록은 해제되지 않습니다.
+
+- Pre는 문서 보존 검사를 먼저 수행합니다. 거부된 편집은 코드 pending을 만들지
+  않습니다. 허용된 호출은 session_id·tool_use_id로 작업과 문서 관측을 연결합니다.
+  작업 관측과 대응 이벤트 등록은 같은 SQLite transaction으로 확정합니다.
+- Post와 Failure는 저장한 대상 경로를 사용하므로 입력 내용이 생략돼도 동일 호출을
+  종료합니다. 부분 실패의 실제 변경은 기록 의무로 남습니다. 작업 종료 후 문서 처리
+  중 중단된 호출은 Post를 다시 처리할 수 있습니다.
+- 명시적 코드 편집은 Git root 기준 경로와 symlink 자체를 관측합니다. 범위를 알 수
+  없는 Bash는 관측 구간의 변경이며 원인을 자동 확정하지 않습니다. 읽기 도구의
+  세션에는 다른 writer의 전역 revision 변화를 작업으로 부과하지 않습니다.
+- 중앙 vault에서 실행하는 순수 `uv run python -m harness ...` 또는 같은 Python
+  모듈 명령은 자기 기록을 pending으로 만들지 않습니다. 허용 subcommand만 인정하고
+  shell 연결·redirection·치환·glob·tilde 확장이 있으면 이 예외를 적용하지 않습니다.
+- Stop은 자기 세션의 작업 pending·Task 연결·미기록 변경을 검사합니다. SessionStart는
+  같은 worktree의 미완료 작업을 보여 줍니다. 명시적 work reconcile은 실제 writer와
+  파일 확인 후 호출 연결을 정리하되, 변경된 작업의 기록과 문서 검증 의무는 유지합니다.
 
 아래는 구현 완료 선언이 아닌, 남은 작업의 판정 기준입니다. 구현 전에 입력·범위·실패 결과를 확정하고 정상 사례와 위반 사례를 고정합니다. 특정 문서의 정리 작업은 상시 검사 코드로 만들지 않습니다. 실제 구현과 검증 상태는 중앙 Task가 소유합니다.
 

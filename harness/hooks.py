@@ -3,8 +3,10 @@ import argparse
 from contextlib import closing
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import shlex
 import sqlite3
 import sys
 import uuid
@@ -40,17 +42,20 @@ def role(root, path):
     return 'outside'
 
 
-def targets(payload):
+def targets(payload, resolve=True):
     tool = payload.get('tool_name', '')
     data = payload.get('tool_input', {})
     if not isinstance(data, dict):
         raise ValueError('tool_input must be an object')
     cwd = Path(payload.get('cwd', '.')).resolve()
+    def target(name):
+        path = cwd / name
+        return path.resolve() if resolve else Path(os.path.abspath(path))
     if tool in ('Edit', 'Write', 'MultiEdit'):
         name = data.get('file_path')
         if not isinstance(name, str) or not name:
             raise ValueError('Edit/Write requires file_path')
-        return [(cwd / name).resolve()]
+        return [target(name)]
     if tool == 'apply_patch':
         command = data.get('command', data.get('patch', data.get('input', '')))
         if not isinstance(command, str):
@@ -58,7 +63,7 @@ def targets(payload):
         names = re.findall(r'^\*\*\* (?:Add File|Update File|Delete File|Move to): (.+)$', command, re.M)
         if not names:
             raise ValueError('Cannot determine apply_patch targets')
-        return list(dict.fromkeys((cwd / name).resolve() for name in names))
+        return list(dict.fromkeys(target(name) for name in names))
     return []
 
 
@@ -139,7 +144,7 @@ def pending_issues(root):
     return [dict(path=name, code='hook-pending', message='Unfinished hooked edit; reconcile its session before checkpoint') for (name,) in rows]
 
 
-def handle(root, agent, payload):
+def handle_documents(root, agent, payload, scoped=False, own_change=False):
     root = root.resolve()
     event = payload.get('hook_event_name')
     if event not in EVENTS:
@@ -202,7 +207,7 @@ def handle(root, agent, payload):
             if current:
                 for p in current:
                     db.execute('DELETE FROM pending WHERE path=? AND session=?', (p.relative_to(root).as_posix(), key))
-            changed = revision != row[0] or bool(current)
+            changed = own_change if scoped else revision != row[0] or bool(current)
             if changed:
                 db.execute('UPDATE sessions SET dirty=1 WHERE id=?', (key,))
             db.commit()
@@ -213,7 +218,7 @@ def handle(root, agent, payload):
                 return output(event, 'repair', 'document-check', 'Edit has already run. Repair and rerun harness check: ' + json.dumps(result['issues'][:3], ensure_ascii=False))
             return {}
         if event == 'Stop':
-            if not row[1] and revision == row[0] and not db.execute('SELECT 1 FROM pending WHERE session=?', (key,)).fetchone():
+            if not row[1] and (scoped or revision == row[0]) and not db.execute('SELECT 1 FROM pending WHERE session=?', (key,)).fetchone():
                 return {}
             result = check(root)
             pending = pending_issues(root)
@@ -241,19 +246,187 @@ def handle(root, agent, payload):
     return {}
 
 
-def recover(root, agent, session):
+def control_command(root, cwd, command):
+    """Only pure calls to the central CLI; no shell evaluation is performed."""
+    if Path(cwd).resolve() != root.resolve() or not isinstance(command, str):
+        return False
+    if any(c in command for c in '\n\r$`;&|<>()*?[]{}~'):
+        return False
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return False
+    if words[:2] == ['uv', 'run']:
+        words = words[2:]
+    interpreters = {'python', 'python3', str(root / '.venv/bin/python')}
+    if len(words) < 4 or words[0] not in interpreters or words[1:3] != ['-m', 'harness']:
+        return False
+    if words[3] == 'work':
+        return len(words) > 4 and words[4] in {'bind', 'record', 'status', 'reconcile'}
+    return words[3] in {'context', 'search', 'index', 'snapshot', 'verify', 'check', 'checkpoint', 'structure', 'catalog'}
+
+
+def paired_database(root):
+    db = database(root)
+    db.execute('CREATE TABLE IF NOT EXISTS hook_calls (session TEXT NOT NULL, tool TEXT NOT NULL, paths TEXT NOT NULL, before_docs TEXT, revision TEXT NOT NULL, observes_work INTEGER NOT NULL, PRIMARY KEY(session,tool))')
+    db.commit()
+    return db
+
+
+def pair_changed(root, call):
+    before = json.loads(call[1]) if call[1] is not None else None
+    return (fingerprint(root) != call[2] if before is None else
+            any((digest(Path(p)) if Path(p).is_file() else None) != value for p, value in before.items()))
+
+
+def reconcile_pair(root, key, tool):
+    """Explicit writer reconciliation retains document verification obligations."""
+    with closing(paired_database(root)) as db, db:
+        call = db.execute('SELECT paths,before_docs,revision FROM hook_calls WHERE session=? AND tool=?', (key, tool)).fetchone()
+        if not call:
+            return
+        if pair_changed(root, call):
+            db.execute('UPDATE sessions SET dirty=1 WHERE id=?', (key,))
+        for name in json.loads(call[0]):
+            path = Path(name)
+            if path.is_relative_to(root):
+                db.execute('DELETE FROM pending WHERE path=? AND session=?', (str(path.relative_to(root)), key))
+        db.execute('DELETE FROM hook_calls WHERE session=? AND tool=?', (key, tool))
+
+
+def handle(root, agent, payload):
+    root = root.resolve()
+    config = root / '.local/harness/projects.json'
+    enabled = json.loads(config.read_text()).get('work_contract', 0) if config.exists() else 0
+    if enabled not in (0, 1):
+        raise ValueError('Unsupported work_contract')
+    if not enabled:
+        # A configuration toggle is not evidence that previous work was recorded.
+        state = root / '.local/harness/hook-state.sqlite'
+        if state.exists():
+            key = agent + ':' + str(payload.get('session_id', ''))
+            with closing(database(root)) as db:
+                tables = {r[0] for r in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+                enabled = bool(('work_calls' in tables and db.execute("SELECT 1 FROM work_calls WHERE session=? AND state!='recorded'", (key,)).fetchone()) or
+                               ('hook_calls' in tables and db.execute('SELECT 1 FROM hook_calls WHERE session=?', (key,)).fetchone()))
+        if not enabled:
+            return handle_documents(root, agent, payload)
+    from harness import work
+    event = payload.get('hook_event_name')
+    raw_session = payload.get('session_id')
+    if not isinstance(raw_session, str) or not raw_session:
+        raise ValueError('Hook requires session_id')
+    key = agent + ':' + raw_session
+    cwd = Path(payload.get('cwd', '.')).resolve()
+    tool = payload.get('tool_use_id')
+    name = payload.get('tool_name')
+    if event == 'SessionStart':
+        response = handle_documents(root, agent, payload, scoped=True)
+        if registered(root, cwd):
+            state = work.status(root, workspace=cwd)
+            unfinished = [s for s in state['sessions'] if s['calls']]
+            if unfinished:
+                return output(event, 'info', 'context', f'Read {root}/wiki/notes/agents/work-management-policy.md and the full central Task. Reconcile unfinished work: ' + json.dumps(unfinished, ensure_ascii=False))
+        return response
+    if event == 'PreToolUse':
+        if name not in {'Bash', 'Edit', 'Write', 'MultiEdit', 'apply_patch'}:
+            return handle_documents(root, agent, payload, scoped=True)
+        command = payload.get('tool_input', {}).get('command', '')
+        if name == 'Bash' and control_command(root, cwd, command):
+            return handle_documents(root, agent, payload, scoped=True)
+        selected = targets(payload)
+        observes_work = registered(root, cwd)
+        if not observes_work and not any(role(root, p) in {'current', 'evidence'} for p in selected):
+            return {}
+        if not isinstance(tool, str) or not tool:
+            return output(event, 'deny', 'tool-id-missing', 'Paired work observation requires tool_use_id.')
+        with closing(paired_database(root)) as db:
+            if db.execute('SELECT 1 FROM hook_calls WHERE session=? AND tool=?', (key, tool)).fetchone():
+                return output(event, 'deny', 'tool-id-duplicate', 'Reconcile the unfinished call before retrying its ID.')
+        response = handle_documents(root, agent, payload, scoped=True)
+        if response.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny':
+            return response
+        before_docs = {str(p): digest(p) if p.is_file() else None for p in selected if role(root, p) == 'current'}
+        def save_pair(db):
+            db.execute('INSERT INTO hook_calls VALUES (?,?,?,?,?,?)',
+                       (key, tool, json.dumps([str(p) for p in selected]),
+                        json.dumps(before_docs) if selected else None, fingerprint(root), int(observes_work)))
+        try:
+            if observes_work:
+                workspace = work.repository(cwd)
+                lexical = targets(payload, resolve=False)
+                relative = [str(p.relative_to(workspace)) for p in lexical if p.is_relative_to(workspace)] if lexical else None
+                work.begin(root, key, tool, workspace, relative, on_begin=save_pair)
+            else:
+                with closing(paired_database(root)) as db, db:
+                    save_pair(db)
+        except Exception:
+            # This Pre failed before a tool could run. Release only its document targets.
+            with closing(database(root)) as db, db:
+                for p in selected:
+                    if p.is_relative_to(root):
+                        db.execute('DELETE FROM pending WHERE path=? AND session=?', (str(p.relative_to(root)), key))
+            raise
+        return response
+    if event in ('PostToolUse', 'PostToolUseFailure'):
+        with closing(paired_database(root)) as db:
+            call = db.execute('SELECT paths,before_docs,revision,observes_work FROM hook_calls WHERE session=? AND tool=?', (key, tool)).fetchone()
+        if not call:
+            # Read tools and pure CLI controls never create observations.
+            return {}
+        paths = json.loads(call[0])
+        changed = pair_changed(root, call)
+        if call[3]:
+            with closing(work.database(root)) as db:
+                pending = db.execute("SELECT 1 FROM work_calls WHERE session=? AND tool=? AND state='pending'", (key, tool)).fetchone()
+            if pending:
+                work.finish(root, key, tool)
+        paired = dict(payload, tool_name='apply_patch' if paths else 'Bash',
+                      tool_input={'command': '\n'.join('*** Update File: ' + p for p in paths) if paths else ''})
+        response = handle_documents(root, agent, paired, scoped=True, own_change=changed)
+        with closing(paired_database(root)) as db, db:
+            db.execute('DELETE FROM hook_calls WHERE session=? AND tool=?', (key, tool))
+        return response
+    if event == 'Stop':
+        state = work.status(root, key)
+        with closing(paired_database(root)) as db:
+            pending = db.execute('SELECT tool FROM hook_calls WHERE session=?', (key,)).fetchall()
+        issues = list(state['issues'])
+        if pending and 'work-pending' not in issues:
+            issues.append('work-pending')
+        if issues:
+            result = {'ok': False, 'issues': [{'code': c} for c in issues], 'work': state}
+            log = result_log(root, key, result, fingerprint(root))
+            return output(event, 'unverified' if payload.get('stop_hook_active') else 'repair',
+                          'work-record-required', f'Reconcile actual writer/workspace, update the full Task and record evidence. Evidence: {log}. ' + json.dumps(issues))
+        return handle_documents(root, agent, payload, scoped=True)
+    return handle_documents(root, agent, payload, scoped=True)
+
+
+def recover(root, agent, session, unchanged_only=False):
     """Explicit reconciliation, never based on age; does not fabricate before-state."""
     result = check(root)
-    if not result['ok']:
+    if not result['ok'] and not unchanged_only:
         raise ValueError('Repair document check failures before releasing pending edits')
     key = agent + ':' + session
     with closing(database(root)) as db:
+        db.execute('BEGIN IMMEDIATE')
         pending = db.execute('SELECT path,before_hash FROM pending WHERE session=?', (key,)).fetchall()
-        log = result_log(root, key, {'ok': True, 'operation': 'explicit-reconciliation', 'pending': pending}, fingerprint(root))
+        if unchanged_only:
+            for name, before_hash in pending:
+                path = root / name
+                if path.resolve() != path.absolute() or not path.is_relative_to(root):
+                    raise ValueError('Pending path changed or is unsafe')
+                current_hash = digest(path) if path.is_file() else None
+                if current_hash != before_hash or (path.exists() and not path.is_file()):
+                    raise ValueError('Pending file changed; unchanged-only recovery refused')
+        log = result_log(root, key, {**result, 'document_check_ok': result['ok'],
+                                    'operation': 'unchanged-reconciliation' if unchanged_only else 'explicit-reconciliation',
+                                    'pending': pending}, fingerprint(root))
         db.execute('DELETE FROM pending WHERE session=?', (key,))
         db.execute('UPDATE sessions SET dirty=1,retries=0,failure=NULL WHERE id=?', (key,))
         db.commit()
-    return {'reconciled': len(pending), 'evidence': log}
+    return {'reconciled': len(pending), 'evidence': log, 'document_check_ok': result['ok']}
 
 
 def main():
@@ -261,11 +434,14 @@ def main():
     parser.add_argument('--agent', choices=('codex', 'claude'), required=True)
     parser.add_argument('--root', type=Path, default=ROOT)
     parser.add_argument('--recover-session')
+    parser.add_argument('--unchanged-only', action='store_true')
     args = parser.parse_args()
+    if args.unchanged_only and not args.recover_session:
+        parser.error('--unchanged-only requires --recover-session')
     payload = {}
     try:
         if args.recover_session:
-            print(json.dumps(recover(args.root.resolve(), args.agent, args.recover_session)))
+            print(json.dumps(recover(args.root.resolve(), args.agent, args.recover_session, args.unchanged_only)))
             return 0
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
