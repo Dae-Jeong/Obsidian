@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import re
 
-from harness.documents import paths, fingerprint
+from harness.documents import protected_paths, protected_roots, fingerprint
 from harness.readiness import publication_state
 
 
@@ -18,7 +18,7 @@ def baseline_path(root):
 
 
 def state(root):
-    return {p.relative_to(root).as_posix(): digest(p) for p in paths(root)}
+    return {p.relative_to(root).as_posix(): digest(p) for p in protected_paths(root)}
 
 
 def issues(root, initialize=False):
@@ -36,6 +36,9 @@ def issues(root, initialize=False):
         if not isinstance(data.get('revision'), str) or not re.fullmatch(r'[0-9a-f]{64}', data['revision']):
             raise ValueError('revision must be a SHA-256 digest')
         previous = data['files']
+        registered = protected_roots(root)
+        if any(name not in registered for name in data.get('protected_roots', [])):
+            raise ValueError('A protected domain was unregistered; restore its registration before checking')
         for name, sha in previous.items():
             if (not isinstance(name, str) or not name or Path(name).is_absolute()
                     or '..' in Path(name).parts or Path(name).as_posix() != name
@@ -76,8 +79,10 @@ def issues(root, initialize=False):
     for name in current.keys() - previous.keys():
         if name in relocated:
             continue
+        if name.startswith('wiki/sources/'):
+            continue  # Domain-specific naming and frozen artifacts keep their original names.
         leaf = Path(name).name
-        invalid = not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*\.md', leaf)
+        invalid = not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*\.[a-z0-9]+', leaf)
         invalid = invalid or bool(re.match(r'\d{4}-\d{2}-\d{2}', leaf)) or bool(re.search(r'(?:^|-)(?:latest|final)(?:-|\.md$)', leaf))
         if leaf not in {'README.md', 'AGENTS.md', '_map.md'} and invalid:
             errors.append({'path': name, 'code': 'filename', 'message': 'New current documents require lowercase kebab-case names'})
@@ -101,7 +106,7 @@ def checkpoint(root, initialize=False):
         raise ValueError('Corpus changed during validation; retry from current sources')
     target.parent.mkdir(parents=True, exist_ok=True)
     temp = target.with_suffix('.tmp')
-    temp.write_text(json.dumps({'files': files, 'revision': before}, indent=2) + '\n')
+    temp.write_text(json.dumps({'files': files, 'revision': before, 'protected_roots': protected_roots(root)}, indent=2) + '\n')
     os.replace(temp, target)
     return {'ok': True, 'documents': len(files), 'revision': before,
             'verification': 'document-contract-and-before-state-only'}

@@ -7,8 +7,10 @@ from urllib.parse import unquote
 import yaml
 
 from harness.documents import parse, paths, sections
+from harness.anchors import fragment_issue
 from harness.checkpoint import issues as preservation_issues
 from harness.layout import issues as layout_issues
+from harness.structure import enabled as structure_enabled, validate as validate_structure
 
 
 STATUSES = {"ready", "active", "blocked", "review", "done", "cancelled"}
@@ -49,6 +51,7 @@ def link_target(root, document, value, wiki=False):
 
 def check(root, strict_tasks=True, *, initialize=False):
     issues = preservation_issues(root, initialize=initialize) + layout_issues(root)
+    enforce_structure = structure_enabled(root)
     docs = []
     ids = {}
     tasks = {}
@@ -62,6 +65,8 @@ def check(root, strict_tasks=True, *, initialize=False):
             error(rel, "metadata", str(exc))
             continue
         docs.append(doc)
+        if enforce_structure:
+            issues.extend(validate_structure(doc))
         for heading, _ in sections(doc.body):
             if re.search(r'(?:이전 본문|이전 입구|보존 원문|보존 본문|보존 요약|변경 이력|작업 로그|progress log|changelog|previous version)', heading, re.I):
                 error(rel, 'history-in-current', 'Move prior content/process into Log; keep current conclusions here')
@@ -77,6 +82,11 @@ def check(root, strict_tasks=True, *, initialize=False):
             target = link_target(root, path, value, wiki)
             if target is not None and not target.exists():
                 error(rel, "missing-link", value)
+            try:
+                fragment = fragment_issue(root, path, value, wiki, link_target)
+                if fragment: issues.append(fragment)
+            except (ValueError, UnicodeError, OSError, yaml.YAMLError) as exc:
+                error(rel, "anchor-target", f"{value}: {exc}")
         is_task = "/tasks/" in rel and Path(rel).name not in {"README.md", "index.md"}
         if (doc.metadata.get("kind") == "task" or is_task) and strict_tasks:
             meta = doc.metadata

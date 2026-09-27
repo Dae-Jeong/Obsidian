@@ -1,22 +1,16 @@
 # Second Brain
 
-`wiki/`는 프로젝트 작업과 재사용 지식을 관리하는 LLM Wiki입니다. 이 README는 저장소 구성과 문서 계약을 안내합니다. 지식 탐색과 작업 인수는 [Wiki 진입점](wiki/index.md)에서 시작합니다.
+Obsidian 기반의 개인 지식·프로젝트 작업 관리 시스템입니다. Markdown을 정본으로 관리하고, Python 하네스로 문서 구조·작업 인수 정보·편집 전 보존을 검사합니다. Codex와 Claude는 같은 규칙과 중앙 어댑터를 사용합니다.
 
-| 위치 | 역할 |
-| --- | --- |
-| [wiki/profile.md](wiki/profile.md) | 확인된 사용자 맥락과 협업 선호 |
-| [wiki/notes/](wiki/notes/index.md) | 현재 지식·참고 설명·공통 규칙 |
-| [wiki/projects/](wiki/projects/index.md) | 프로젝트 목적·Task·검토 결과 |
-| wiki/sources/ | 원본 자료·첨부·출처별 도메인 원장 |
-| [wiki/log/index.md](wiki/log/index.md) · wiki/log/ | 수정 전 원문·변경 이유·작업 과정 |
-| [harness/](docs/harness/document-workflow.md) | 문서 검사·프로젝트 탐색·검색 코드 |
-| [docs/](docs/harness/document-workflow.md) | harness 설치·사용·구현 설명 |
-| tests/ | 실행 규칙의 자동 회귀 검사 |
-| .local/harness/ | 프로젝트 등록·보존 checkpoint·훅 실행 상태·재생성 가능한 검색 DB |
+## 주요 기능
 
-개인 본문·원본·Log·DB는 Git에서 제외합니다. 공개 저장소는 도구·규약·가짜 테스트 자료만 제공합니다. 코드·구현 계약·원시 실행 증거는 해당 제품 저장소가 소유합니다.
+- **지식 관리:** 사용자 맥락, 재사용 지식, 출처 자료를 역할별로 구분합니다.
+- **작업 인수:** 프로젝트별 Task에 목표·범위·현재 결과·다음 행동을 기록합니다.
+- **문서 검사:** 파일·문단 링크, 이름, Task 필드, 보존 상태와 미완료 편집을 검사합니다.
+- **문맥 검색:** SQLite 색인에서 현재 문서의 관련 구간을 찾습니다. 원본과 이력은 별도로 조회합니다.
+- **에이전트 연결:** 중앙 훅으로 명시적 편집 도구와 종료 시점의 문서 검사를 연결합니다.
 
-## 구성
+## 프로젝트 구조
 
 ```text
 Obsidian/
@@ -41,41 +35,100 @@ Obsidian/
 └── Makefile
 ```
 
-루트 저장소 안내는 `README.md`, 관리 문서 폴더의 탐색 입구는 `index.md`입니다. `wiki/`와 `.local/`은 로컬 전용이므로 공개 저장소를 clone하면 개인 본문과 머신 등록 정보는 포함되지 않습니다.
+관리 문서 폴더의 입구는 `index.md`입니다. Python 파일은 snake_case, 일반 문서와 폴더는 소문자 kebab-case를 사용합니다. 루트 `README.md`, `AGENTS.md`, `Makefile` 등 도구·저장소 진입 이름은 유지합니다.
 
-## 시작하기
+## 설치
 
-1. 머신 진입 규칙과 [AGENTS.md](AGENTS.md)를 읽습니다.
-2. [wiki/index.md](wiki/index.md)에서 질문의 정본을 찾습니다.
-3. 작업은 해당 프로젝트 index와 Task를 읽고 실제 작업 상태와 대조합니다.
-4. [공통 작업 규약](wiki/notes/agents/work-management-policy.md)을 따릅니다.
+요구 환경은 Python 3.14 이상과 uv입니다.
 
 ```sh
 uv sync --locked
-make check
-uv run python -m harness context /absolute/project/path
-uv run python -m harness check
-uv run python -m harness checkpoint
-uv run python -m harness search '검색어'
-uv run python -m harness search '과거 결정' --scope history
-uv run python -m harness search '원문 근거' --scope sources
-uv run python -m unittest discover -s tests -v
 ```
 
-Python 3.14 이상과 uv를 사용합니다. `pyproject.toml`과 `uv.lock`이 환경·의존성을 관리하며, `uv run`은 프로젝트 `.venv`에서 실행합니다. `make check`는 회귀 테스트와 현재 문서 검사를 함께 수행합니다. 새 머신의 개인 문서·프로젝트 등록·최초 checkpoint 설정은 [실행 안내](docs/harness/document-workflow.md)를 따릅니다.
+`pyproject.toml`은 프로젝트·의존성을 선언하고, `uv.lock`은 설치 버전을 고정합니다. `uv run`은 프로젝트 `.venv`를 사용합니다.
 
-## 에이전트 연결과 검사 범위
+`wiki/`와 `.local/`은 개인 자료이므로 Git에서 제외합니다. 공개 저장소를 clone하면 개인 문서와 머신 등록 정보는 포함되지 않습니다. 새 머신의 문서 배치·프로젝트 등록·최초 checkpoint는 [설정 안내](docs/harness/document-workflow.md)를 따릅니다.
 
-Codex·Claude는 [중앙 어댑터](docs/harness/agent-hooks-design.md) 하나를 사용합니다. 설치 명령은 `uv run python -m harness.install_hooks`이며, 설치된 훅은 `.venv/bin/python`으로 `harness/hooks.py`를 직접 실행합니다. 설정 등록과 런타임 신뢰·실제 실행 검증은 별도 단계입니다.
+## 사용법
 
-- 명시적 편집 도구의 before-state 보존, 파일 이름, 진행 중인 편집 충돌을 검사합니다.
-- 도구 실행 후와 종료 시 문서 검사·checkpoint 상태를 확인합니다.
-- 기본 검색은 현재 문서만 조회하며 원본·이력은 명시적으로 선택합니다.
-- 문서의 사실 최신성, 모든 shell·MCP 쓰기, 코드 변경 후 Task 기록을 완전히 강제하는 기능은 보장하지 않습니다.
+로컬 문서 탐색은 [위키 입구](wiki/index.md), 에이전트 작업은 [AGENTS.md](AGENTS.md)에서 시작합니다. 다음 명령은 문서와 프로젝트 등록을 구성한 저장소 루트에서 실행합니다.
 
-현재 구현·문서 정리의 진행 상태는 [구현 Task](wiki/projects/llm-wiki/tasks/shared-task-harness.md)가 소유합니다.
+### 프로젝트와 작업 찾기
 
-문서의 배치·갱신·종료·인수 흐름은 [문서 구조와 생애주기](docs/document-lifecycle.md)의 Mermaid 도표에서 확인합니다.
+```sh
+uv run python -m harness context /absolute/project/path
+uv run python -m harness context /absolute/project/path --task TASK_ID
+```
+
+기존 Task의 전체 내용을 읽고 실제 저장소 상태와 대조한 뒤 작업을 이어갑니다.
+
+### 문서 검색
+
+```sh
+uv run python -m harness search '검색어'
+uv run python -m harness search '원문 근거' --scope sources
+uv run python -m harness search '과거 결정' --scope history
+```
+
+기본 검색은 현재 문서만 조회합니다. 검색 결과의 정본과 확인 범위를 읽어 적용 가능성을 판단합니다.
+
+### 역할별 템플릿 검사
+
+[8개 템플릿](docs/harness/document-templates.md)은 Project·Task·Review·Log와 개념·절차·참조·규칙 Note를 제공합니다.
+
+```sh
+uv run python -m harness structure wiki/notes/example.md
+```
+
+필수 항목·문서 역할·검증 날짜·미입력 변수를 검사합니다. 전체 기존 문서의 템플릿 적용은 진행 중이며 일반 `check`와 별도로 결과를 확인합니다.
+
+### 문서 갱신
+
+```sh
+uv run python -m harness snapshot wiki/notes/example.md --reason '변경 이유'
+# 문서 수정
+uv run python -m harness check
+uv run python -m harness checkpoint
+```
+
+정본과 관련 링크를 함께 갱신합니다. 현재 문서는 현재 적용되는 내용만 담고, 필요한 작업 근거는 Log에 기록합니다. 세부 작업 절차는 [공통 작업 규약](wiki/notes/agents/work-management-policy.md)을 따릅니다.
+
+## Codex·Claude 연결
+
+```sh
+uv run python -m harness.install_hooks
+```
+
+설치기는 두 도구의 설정에 중앙 어댑터를 등록합니다. 훅은 `.venv/bin/python`으로 `harness/hooks.py`를 직접 실행합니다. 설정 등록 후에는 도구별 신뢰 상태와 실제 실행을 확인해야 합니다. [어댑터 설계·설정](docs/harness/agent-hooks-design.md)에 이벤트별 동작과 검증 범위를 설명합니다.
+
+## 개발과 검증
+
+```sh
+make test     # 합성 자료 기반 회귀 테스트
+make check    # 회귀 테스트 + 현재 문서 검사
+make index    # 현재 문서 검색 색인 재생성
+```
+
+커밋 전 검사는 `.githooks/pre-commit`이 담당합니다. 해당 checkout에 연결하려면 `git config core.hooksPath .githooks`를 실행합니다. 개인 문서가 없는 환경에서는 `make test`로 실행 로직을 검증하고, 문서 설정이 끝난 환경에서는 `make check`로 실제 문서도 검사합니다.
+
+`.local/harness/`의 `projects.json`, `checkpoint.json`, `hook-state.sqlite`는 필요한 머신 상태입니다. `current.sqlite`, `sources.sqlite`, `history.sqlite`는 문서에서 재생성하는 검색 색인입니다.
+
+## 문서 안내
+
+| 문서 | 내용 |
+| --- | --- |
+| [문서 생애주기](docs/document-lifecycle.md) | 영역별 책임과 갱신·인수 흐름 |
+| [문서 템플릿](docs/harness/document-templates.md) | 역할별 작성 형식과 조사 근거 |
+| [하네스 사용 안내](docs/harness/document-workflow.md) | 설정·명령·검사 범위 |
+| [에이전트 어댑터](docs/harness/agent-hooks-design.md) | 훅 설치와 동작 |
+| [공통 작업 규약](wiki/notes/agents/work-management-policy.md) | 작업 탐색·기록·검증 기준 — 로컬 문서 |
+| [구현 Task](wiki/projects/llm-wiki/tasks/shared-task-harness.md) | 현재 결과·남은 작업 — 로컬 문서 |
+
+[orchestration/](orchestration/README.md)은 독립 Git submodule이며 자체 규칙과 커밋을 사용합니다.
+
+## 적용 범위
+
+하네스는 구조와 기록의 정합성을 검사합니다. 사실의 최신성·제품 동작·문서의 의미상 정확성은 출처와 실행 근거로 별도 검토해야 합니다. 모든 shell·MCP 쓰기의 사전 차단이나 코드 변경 후 Task 기록의 완전한 강제는 구현 범위에 포함되지 않습니다.
 
 ## File Naming
 
@@ -118,12 +171,4 @@ uv run python -m harness check
 
 해시·구문·링크 검사는 사실 검증을 대신하지 않습니다. 자연어의 최신성, 실제 제품 동작과 완료 근거는 별도로 검토합니다. 검사 스크립트는 CI 방식으로 작동하며 동일 계정의 임의 파일 수정을 OS 권한으로 차단하지 않습니다.
 
-검색 DB는 Markdown에서 재생성합니다. 기본 검색은 현재 문서만 대상으로 하며 원본과 이력은 명시적으로 범위를 선택합니다. Task를 이어받을 때는 전체 본문을 읽어 권한·blocker·검증 조건을 빠뜨리지 않습니다.
-
-## 별도 실행 저장소
-
-[orchestration](orchestration/README.md)은 독립 Git submodule입니다. 그 영역의 작업은 해당 AGENTS.md를 따릅니다. 부모와 자식의 변경·커밋은 각각 관리합니다.
-
-현재 문서는 wiki/notes·wiki/projects·wiki/profile.md에서 관리합니다. 구조 검사는 숨김 파일과 빈 폴더까지 확인하며, 역할이 정의된 루트 항목만 허용합니다. 원본과 출처 자료는 wiki/sources에서 별도로 조회합니다.
-
-`.local/harness/projects.json`은 실제 저장소 경로, `checkpoint.json`은 보존 검사의 기준, `hook-state.sqlite`는 중앙 훅의 세션·미완료 편집·검증 상태입니다. 이들은 삭제 가능한 검색 캐시가 아닙니다. `current.sqlite`, `sources.sqlite`, `history.sqlite`는 Markdown에서 다시 만드는 검색 캐시입니다. 실행 결과와 과거 문서는 `wiki/log/`, 원본 자료는 `wiki/sources/`에 둡니다.
+보존 검사는 현재 영역의 비 Markdown 부속 파일과 `projects.json`에 등록한 추가 도메인도 포함합니다. 추가 도메인 등록은 해당 파일의 현재성·편집 권한·제품 스키마 검증을 대신하지 않습니다. 검색 DB는 Markdown에서 재생성합니다. 기본 검색은 현재 문서만 대상으로 하며 원본과 이력은 명시적으로 범위를 선택합니다. Task를 이어받을 때는 전체 본문을 읽어 권한·blocker·검증 조건을 빠뜨리지 않습니다.

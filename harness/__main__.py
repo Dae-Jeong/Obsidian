@@ -16,6 +16,8 @@ def main():
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("check")
+    structural = sub.add_parser("structure", help="Validate template contracts without editing documents")
+    structural.add_argument("file", nargs="?", type=Path)
     catalog = sub.add_parser("catalog", help="Register document roles and declared dates without certifying freshness")
     catalog.add_argument("--output", type=Path, required=True, help="New directory under wiki/log")
     snap = sub.add_parser("snapshot")
@@ -37,7 +39,16 @@ def main():
     args = parser.parse_args()
     root = args.root.resolve()
     try:
-        if args.command == "catalog":
+        if args.command == "structure":
+            from harness.structure import check_structure, check_file
+            if args.file:
+                path = (root / args.file).resolve()
+                issues = check_file(root, path)
+            else:
+                issues = check_structure(root)
+            result = {"ok": not issues, "issues": issues, "verification": "structure-only"}
+            status = 0 if result['ok'] else 1
+        elif args.command == "catalog":
             result = export_catalog(root, args.output)
             status = 0
         elif args.command == "snapshot":

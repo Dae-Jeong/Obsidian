@@ -68,3 +68,46 @@ class CheckpointTests(unittest.TestCase):
         (record / 'before' / old).write_bytes(b'corrupt')
         self.assertEqual({e['code'] for e in check(self.root)['issues']},
                          {'before-state', 'filename'})
+
+    def test_non_markdown_companion_changes_require_preservation(self):
+        for suffix in ('.json', '.yaml', '.html', '.svg'):
+            with self.subTest(suffix=suffix):
+                path = self.root / ('wiki/notes/companion'+suffix)
+                path.write_text('original bytes')
+                checkpoint(self.root)
+                before = path.read_bytes()
+                path.write_text('unpreserved edit')
+                self.assertIn('before-state', {e['code'] for e in check(self.root)['issues']})
+                path.write_bytes(before)
+                snapshot(self.root, [path.relative_to(self.root).as_posix()], 'update companion')
+                path.write_text('preserved edit')
+                self.assertTrue(check(self.root)['ok'])
+                checkpoint(self.root)
+
+    def test_registered_source_domain_is_protected_without_promoting_source_to_current(self):
+        from harness.documents import paths
+        domain = self.root/'wiki/sources/domain'
+        domain.mkdir(parents=True)
+        registry = self.root/'.local/harness/projects.json'
+        registry.write_text(json.dumps({'protected_roots':['wiki/sources/domain']}))
+        source = domain/'application-registry.yaml'
+        source.write_text('status: pending\n')
+        checkpoint(self.root)
+        self.assertNotIn(source, list(paths(self.root)))
+        source.write_text('status: submitted\n')
+        self.assertIn('before-state', {e['code'] for e in check(self.root)['issues']})
+        source.write_text('status: pending\n')
+        snapshot(self.root, ['wiki/sources/domain/application-registry.yaml'], 'domain status update')
+        source.write_text('status: submitted\n')
+        self.assertTrue(check(self.root)['ok'])
+        checkpoint(self.root)
+        registry.write_text('{}')
+        self.assertIn('checkpoint-invalid', {e['code'] for e in check(self.root)['issues']})
+
+    def test_companion_changes_invalidate_current_revision(self):
+        from harness.documents import fingerprint
+        p = self.root/'wiki/notes/companion.json'
+        p.write_text('{}')
+        before = fingerprint(self.root)
+        p.write_text('{"changed":true}')
+        self.assertNotEqual(before, fingerprint(self.root))

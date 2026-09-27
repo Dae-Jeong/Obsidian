@@ -1,6 +1,7 @@
 """Markdown metadata and explicit corpus scopes shared by CLI operations."""
 from dataclasses import dataclass
 import hashlib
+import json
 from pathlib import Path
 import re
 
@@ -65,9 +66,55 @@ def paths(root, scope="current"):
             yield p
 
 
+def protected_roots(root):
+    """Explicit extra preservation scope, never an automatic currentness claim."""
+    registry = root / '.local/harness/projects.json'
+    if not registry.exists():
+        return []
+    data = json.loads(registry.read_text())
+    if not isinstance(data, dict):
+        raise ValueError('Project registry must be an object')
+    names = data.get('protected_roots', [])
+    if not isinstance(names, list):
+        raise ValueError('protected_roots must be a list')
+    result = []
+    for name in names:
+        if not isinstance(name, str) or not name or Path(name).is_absolute() or '..' in Path(name).parts:
+            raise ValueError('Protected roots must be local relative paths')
+        # This extension is specifically for domain owners stored in sources.
+        if not name.startswith('wiki/sources/') or Path(name).as_posix() != name:
+            raise ValueError('Additional protected roots must identify a domain under wiki/sources')
+        path = root / name
+        if path.is_symlink():
+            raise ValueError('Protected domain root must not be a symlink')
+        path.resolve().relative_to(root.resolve())
+        if not path.exists():
+            raise ValueError(f'Protected domain is missing: {name}')
+        result.append(name)
+    return sorted(set(result))
+
+
+def protected_paths(root):
+    """Full bytes of current owners/companions plus explicitly registered domains."""
+    result = set(paths(root))
+    for folder in ('wiki/notes', 'wiki/projects', 'docs', *protected_roots(root)):
+        base = root / folder
+        candidates = [base] if base.is_file() else base.rglob('*')
+        for p in candidates:
+            rel = p.relative_to(root)
+            if not p.is_file() or p.is_symlink() or any(part.startswith('.') for part in rel.parts):
+                continue
+            # A directory bridge must never silently extend the managed scope.
+            if any(parent.is_symlink() for parent in p.parents if parent != root and root in parent.parents):
+                continue
+            p.resolve().relative_to(root.resolve())
+            result.add(p)
+    yield from sorted(result)
+
+
 def fingerprint(root, scope="current"):
     h = hashlib.sha256()
-    for p in sorted(paths(root, scope)):
+    for p in (protected_paths(root) if scope == "current" else sorted(paths(root, scope))):
         h.update(p.relative_to(root).as_posix().encode())
         h.update(b"\0")
         h.update(hashlib.sha256(p.read_bytes()).digest())

@@ -31,6 +31,7 @@ Run from the vault root after `uv sync --locked`:
 
 ```sh
 uv run python -m harness check
+uv run python -m harness structure wiki/notes/example.md
 uv run python -m harness snapshot wiki/notes/example.md --reason 'Explain the change'
 uv run python -m harness verify wiki/log/<record>
 uv run python -m harness checkpoint
@@ -75,6 +76,34 @@ semantic obsolescence still requires reading the source and current owner.
 Search returns bounded sections and discloses truncation. Read the complete Task
 before resuming work. Whole-corpus hashes detect additions, edits, moves and
 deletions; stale indexes rebuild locally. Current queries exclude wiki/sources and Log.
+
+## Preservation and Template Scope
+
+Preservation covers full bytes of current Markdown and non-Markdown companions
+under notes, projects and docs. Companion edits also invalidate the current
+revision seen by hooks and retrieval. Markdown metadata/link checks and full-text
+search still operate on Markdown; preservation does not test HTML behavior or
+validate a product YAML schema.
+
+The optional `protected_roots` list in projects.json registers explicit domain
+paths under wiki/sources for preservation. On this machine it includes
+`wiki/sources/Dae-Jeong/wiki`, which contains live domain registries as well as
+original evidence. This does not promote all domain files into current search or
+make frozen submissions editable. The product's domain workflow owns mutability
+and schema validation; source/log hook protections still apply. Missing registered
+domains or removing a checkpointed registration causes validation failure.
+
+Local Markdown/Obsidian fragments are checked against target headings or explicit
+IDs, including fragments into preserved evidence and HTML IDs. External URL
+fragments and runtime rendering are not verified by this check.
+
+`structure [file]` checks the [role templates](document-templates.md) and returns
+nonzero for missing required sections, unresolved template variables, invalid
+role metadata and invalid review dates. Optional template sections can be omitted.
+Without a file it covers current Notes and Projects; an individual Log may be
+checked explicitly. Unknown Note purposes require classification rather than a
+silent fallback. Global enforcement requires `document_contract: 1` in the registry;
+this machine has not enabled it because existing documents need reviewed adoption.
 
 ## Document Register
 
