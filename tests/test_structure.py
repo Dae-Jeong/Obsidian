@@ -84,7 +84,7 @@ class StructureTests(unittest.TestCase):
             process = subprocess.run([sys.executable, '-m', 'harness', '--root', directory, 'structure', str(p)], capture_output=True, text=True)
             self.assertEqual(process.returncode, 1)
             self.assertFalse(json.loads(process.stdout)['ok'])
-            self.assertEqual(check_file(root, root/'README.md')[0]['code'], 'structure-scope')
+            self.assertEqual(check_file(root, root/'wiki/sources/original.md')[0]['code'], 'structure-scope')
 
     def test_opt_in_requires_exact_supported_version(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -96,3 +96,24 @@ class StructureTests(unittest.TestCase):
                 with self.assertRaises(ValueError): enabled(root)
             p.write_text('{"document_contract":1}')
             self.assertTrue(enabled(root))
+
+    def test_form_rules_and_conditional_order(self):
+        path = 'wiki/notes/example.md'
+        valid = self.populated('note-procedure')
+        self.assertIn('structure-title', self.codes(path, valid+'\n# Extra\ntext\n'))
+        self.assertIn('structure-duplicate-heading', self.codes(path, valid+'\n## Evidence\ntext\n'))
+        swapped = valid.replace('## Verification', '## TEMP').replace('## Evidence', '## Verification').replace('## TEMP', '## Evidence')
+        self.assertIn('structure-order', self.codes(path, swapped))
+        conditional = valid.replace('## Prerequisites', '## TEMP').replace('## Procedure', '## Prerequisites').replace('## TEMP', '## Procedure')
+        self.assertIn('structure-order', self.codes(path, conditional))
+        self.assertEqual(self.codes(path, valid+'\n## Related\nMore.\n'), set())
+
+    def test_fenced_and_comment_headings_cannot_fill_empty_section(self):
+        text = self.populated('note').replace('## Evidence\n\nFixture content for this section.', '## Evidence\n\n<!-- nothing -->\n## Other\n```md\n## Evidence\nfake\n```')
+        self.assertIn('structure-section', self.codes('wiki/notes/example.md', text))
+        valid = self.populated('note')+'\n````md\n```\n# Fake\n## Evidence\n````\n'
+        self.assertEqual(self.codes('wiki/notes/example.md', valid), set())
+
+    def test_entry_documents_have_basic_form_without_note_metadata(self):
+        self.assertEqual(self.codes('README.md', '# Entry\n\nBody.\n'), set())
+        self.assertIn('structure-title', self.codes('wiki/profile.md', '# One\nBody\n# Two\nBody\n'))

@@ -95,7 +95,7 @@ uv run python -m harness search '과거 결정' --scope history
 uv run python -m harness structure wiki/notes/example.md
 ```
 
-필수 항목·문서 역할·검증 날짜·미입력 변수를 검사합니다. 현재 Notes·Projects의 역할별 구조 적용을 완료했고, 로컬 등록의 `document_contract: 1`로 일반 `check`에도 통합했습니다. 내용의 사실 검증 범위는 문서별 근거와 확인 상태를 따릅니다.
+필수 항목·문서 역할·검증 날짜·미입력 변수, H1 하나·H2 중복·템플릿 섹션 순서를 검사합니다. `uv run python -m harness.structure_audit`는 역할별 준수율과 파일별 진단·검사 책임을 집계합니다. 현재 Notes·Projects의 역할별 구조 적용을 완료했고, 로컬 등록의 `document_contract: 1`로 일반 `check`에도 통합했습니다. 내용의 사실 검증 범위는 문서별 근거와 확인 상태를 따릅니다.
 
 ### 문서 갱신
 

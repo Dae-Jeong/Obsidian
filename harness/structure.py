@@ -1,5 +1,6 @@
 """Authoring contracts read from templates; adoption is an explicit corpus gate."""
 import json
+from collections import Counter
 import re
 from datetime import date, datetime
 from pathlib import Path
@@ -15,6 +16,8 @@ NOTE_TEMPLATES = {'concept': 'note', 'procedure': 'note-procedure',
 
 def role(path):
     parts = Path(path).parts
+    if path in {'AGENTS.md', 'README.md', 'wiki/index.md', 'wiki/profile.md'} or (parts and parts[0] == 'docs' and Path(path).suffix == '.md'):
+        return 'document'
     if parts[:2] == ('wiki', 'log'):
         return 'log'
     if parts[:2] not in {('wiki', 'notes'), ('wiki', 'projects')}:
@@ -30,6 +33,8 @@ def role(path):
 
 
 def contract(kind, subject_type=None):
+    if kind == 'document':
+        return {}, []
     if kind == 'index':
         return {'type': 'index', 'title': '{{title}}'}, []
     name = kind
@@ -45,9 +50,50 @@ def contract(kind, subject_type=None):
     return template.metadata, required
 
 
+def heading_rows(body):
+    """ATX headings with line offsets; fenced examples/comments are not structure."""
+    lines = re.sub(r'<!--.*?-->', lambda m: '\n' * m[0].count('\n'), body, flags=re.S).splitlines()
+    fence = None
+    result = []
+    for number, line in enumerate(lines):
+        marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line)
+        if fence:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
+                fence = None
+            continue
+        if marker:
+            fence = marker[1]
+            continue
+        match = re.match(r'^ {0,3}(#{1,6})\s+(.+?)\s*$', line)
+        if match:
+            result.append((number, len(match[1]), re.sub(r'\s+#+$', '', match[2])))
+    return result
+
+
 def prose(body):
-    """Hide fenced examples while retaining inline text used in real headings."""
-    return re.sub(r'(?ms)^(`{3,}|~{3,})[^\n]*\n.*?^\1[ \t]*$', '', body)
+    """Hide fenced examples while retaining line offsets."""
+    fence = None
+    lines = []
+    for line in body.splitlines():
+        marker = re.match(r'^ {0,3}(`{3,}|~{3,})(.*)$', line)
+        if fence:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
+                fence = None
+            lines.append('')
+        elif marker:
+            fence = marker[1]
+            lines.append('')
+        else:
+            lines.append(line)
+    return '\n'.join(lines)
+
+
+def template_order(kind, subject_type=None):
+    if kind in {'index', 'document'}:
+        return []
+    name = NOTE_TEMPLATES[subject_type] if kind == 'note' else kind
+    template = parse(name, (TEMPLATES / f'{name}.md').read_bytes())
+    return [title for _, level, title in heading_rows(template.body) if level == 2]
 
 
 def actual_date(value):
@@ -92,7 +138,7 @@ def validate(document):
                 error('structure-type', f'{field} requires a list of nonempty strings')
         elif not isinstance(value, str) or not value.strip():
             error('structure-type', f'{field} requires nonempty text')
-    if meta.get('type') != expected['type']:
+    if 'type' in expected and meta.get('type') != expected['type']:
         error('structure-location', f'{kind} location requires type: {expected["type"]}')
     if kind in {'note', 'review'}:
         verification = meta.get('verification')
@@ -115,20 +161,32 @@ def validate(document):
         error('structure-project', 'project_id must match the owning folder')
     text = prose(document.body)
     clean = re.sub(r'<!--.*?-->', '', text, flags=re.S)
-    if not re.search(r'^# \S', clean, re.M):
-        error('structure-title', 'A document H1 is required')
+    rows = heading_rows(document.body)
+    h2 = [title for _, level, title in rows if level == 2]
+    if sum(level == 1 for _, level, _ in rows) != 1:
+        error('structure-title', 'Exactly one document H1 is required')
+    duplicates = [title for title, count in Counter(h2).items() if count > 1]
+    if duplicates:
+        error('structure-duplicate-heading', 'Duplicate H2: ' + ', '.join(duplicates))
+    order = template_order(kind, meta.get('subject_type'))
+    if [title for title in h2 if title in order] != [title for title in order if title in h2]:
+        error('structure-order', 'Present template sections must retain template order')
     if not re.sub(r'^#+ .*$', '', clean, flags=re.M).strip():
         error('structure-body', 'Document body cannot contain only headings or comments')
-    # Code is real content within a section, but a heading inside code is not a section.
-    outside_headings = {m[1] for m in re.finditer(r'^## (.+)$', clean, re.M)}
-    body_without_comments = re.sub(r'<!--.*?-->', '', document.body, flags=re.S)
+    # Locate real section boundaries, then count code as section content.
+    lines = document.body.splitlines()
     for heading in headings:
-        match = re.search(r'^## '+re.escape(heading)+r'[ \t]*\n(.*?)(?=^## |\Z)',
-                          body_without_comments, re.M | re.S)
-        if heading not in outside_headings or not match or not re.sub(r'^#+ .*$', '', match[1], flags=re.M).strip():
+        positions = [(n, level, title) for n, level, title in rows if level == 2 and title == heading]
+        populated = False
+        for number, _, _ in positions:
+            end = next((n for n, level, _ in rows if n > number and level <= 2), len(lines))
+            section = re.sub(r'<!--.*?-->', '', '\n'.join(lines[number+1:end]), flags=re.S)
+            if re.sub(r'^\s*#+ .*$', '', section, flags=re.M).strip():
+                populated = True
+        if not populated:
             error('structure-section', f'Missing populated section: {heading}')
     marker = r'\{\{(?:title|date(?::[^}]+)?|time(?::[^}]+)?)\}\}|<(?:project-id|stable-task-name)>'
-    if re.search(marker, clean) or re.search(marker, json.dumps(meta, default=str)):
+    if kind != 'document' and (re.search(marker, clean) or re.search(marker, json.dumps(meta, default=str))):
         error('structure-placeholder', 'Fill template variables and identifiers')
     guidance = {s for p in TEMPLATES.glob('*.md') for s in re.findall(r'<!--.*?-->', p.read_text(), re.S)}
     if any(s in text for s in guidance):

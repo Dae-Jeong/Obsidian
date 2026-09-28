@@ -39,6 +39,14 @@ Note의 네 가지 목적은 `subject_type`으로 구분합니다. 새 분류 �
 
 절차의 Prerequisites, 참조의 Constraints, 규칙의 Exceptions는 조건부입니다. 예시·그림·실패 분석은 이해에 필요할 때만 추가합니다. 우리 Procedure의 Verification은 필수 작성 정보로 채택했으며, 외부 템플릿의 모든 선택 항목을 필수로 바꾼 것은 아닙니다.
 
+## 공통 형태 계약
+
+- 관리 Markdown은 문서 제목 H1을 정확히 하나 둡니다. 하위 내용은 H2 이하로 작성하며 동일 문서의 H2 제목은 중복하지 않습니다.
+- 역할별 템플릿의 H2는 템플릿 순서를 유지합니다. Required는 내용이 있어야 하며, Conditional은 해당할 때만 작성하되 작성했다면 같은 순서 규칙을 따릅니다.
+- 추가 H2와 H3 이하의 상세 설명은 허용합니다. 추가 항목 때문에 템플릿 항목의 상대 순서를 바꾸거나 필수 항목을 대체하지 않습니다. 코드 펜스와 HTML 주석 안의 제목 예시는 구조로 계산하지 않습니다.
+- 일반 Index는 type·title·본문과 제목 계약을 따르되 H2 목록을 고정하지 않습니다. README·AGENTS·docs·루트 Wiki index·Profile은 공통 제목·본문 형태만 검사하며 Note의 메타데이터나 섹션을 강제하지 않습니다.
+- Markdown 구조 판독은 ATX 제목(`#`)을 기준으로 합니다. 현재 관리 문서의 제목은 이 형식으로 작성합니다.
+
 ## 메타데이터
 
 | 필드 | 의미와 입력 규칙 |
@@ -80,7 +88,25 @@ blocked Task에는 `blocker`와 `unblock_condition`을 추가합니다. 실제 �
 5. 근거를 실제 확인한 범위만 기록합니다. 템플릿의 `checked: null`은 미확인 표시입니다. 현 Task 검사는 실제 날짜를 요구하므로 Task를 관리 문서로 등록하기 전에 현재 작업 상태와 범위를 확인해야 합니다. 이는 제품 완료 검증과 다릅니다.
 6. 편집 전 보존, 검사와 checkpoint는 [공통 작업 규약](../../wiki/notes/agents/work-management-policy.md)을 따릅니다.
 
-`harness check`는 Task 필드·상태·blocker·완료 증거·의존성 등을 검사합니다. `uv run python -m harness structure [문서경로]`는 템플릿의 필수 항목·Note 목적·날짜·미입력 변수·작성 주석을 검사합니다. 조건부 섹션은 생략할 수 있습니다. 경로를 생략하면 현재 Notes·Projects 전체를 검사하고, 명시한 Log 문서도 검사할 수 있습니다. 역할 템플릿 대상이 아닌 단일 파일은 적용 범위 오류를 반환합니다. 현재 Notes·Projects의 역할 적용과 전체 structure 검사를 마쳐 `.local/harness/projects.json`의 `document_contract: 1`을 활성화했습니다. 일반 `check`도 역할 구조 오류를 실패로 반환합니다. 원본 Sources·Log에 현재 문서 형식을 일괄 강제하지 않습니다. 자동 검사는 필드·유형·링크·항목 누락을 다루고, 근거의 적합성·사실의 최신성은 실제 내용 대조로 확인합니다.
+`harness check`는 Task 필드·상태·blocker·완료 증거·의존성 등을 검사합니다. `uv run python -m harness structure [문서경로]`는 템플릿의 필수 항목·Note 목적·날짜·미입력 변수·작성 주석을 검사합니다. 조건부 섹션은 생략할 수 있습니다. 경로를 생략하면 현재 Notes·Projects의 역할 계약과 README·AGENTS·docs·Wiki index·Profile의 기본 형태를 검사합니다. 명시한 Log 문서도 검사할 수 있습니다. 역할 템플릿과 기본 형태 계약 어느 쪽에도 해당하지 않는 단일 파일은 적용 범위 오류를 반환합니다. 현재 Notes·Projects의 역할 적용과 전체 structure 검사를 마쳐 `.local/harness/projects.json`의 `document_contract: 1`을 활성화했습니다. 일반 `check`도 역할 구조 오류를 실패로 반환합니다. 원본 Sources·Log에 현재 문서 형식을 일괄 강제하지 않습니다. 자동 검사는 필드·유형·링크·항목 누락을 다루고, 근거의 적합성·사실의 최신성은 실제 내용 대조로 확인합니다.
+
+## 정량 구조 측정
+
+`uv run python -m harness.structure_audit`는 현재 owner 전체를 열거하고 역할별 검사 대상·통과·실패·준수율과 파일별 진단을 JSON으로 출력합니다. `--format markdown`은 요약표를 출력합니다. 기존 템플릿과 `structure` 검사를 재사용하며 대상 문서를 수정하지 않습니다. 계약 위반 또는 검사 책임 미지정이 있으면 종료 코드 1, 없으면 0입니다. 실행 오류는 정상 보고서로 처리하지 않습니다.
+
+섹션 순서·H1 개수·중복 H2는 `structure.validate`가 소유하는 실패 조건입니다. `form_differences`는 그 진단을 집계하며 별도 판정 규칙을 두지 않습니다. `retrieval` 미선언은 선택 사항이므로 적용률로만 집계하며, 선언한 형식이 잘못된 경우에는 실패입니다.
+
+분모는 현재 검색·검사가 선택한 Markdown 및 제품 원장입니다. 책임은 `role-template`(Notes·Projects), `basic-form`(진입·설명·Profile), `product-owned`(등록된 current_domains), `unassigned`로 구분합니다. 마지막 항목은 감사 실패이며 현재 owner에 책임 없는 경로가 들어오면 숨기지 않습니다. 제품 문서는 공통 템플릿 통과율의 분모에 넣지 않습니다.
+
+| 범위 | 구조 책임과 실제 검사 |
+| --- | --- |
+| Notes·Projects | 역할별 템플릿과 `harness structure` / `harness check` |
+| README·AGENTS·docs·Wiki index·Profile | 중앙 `harness.structure`의 기본 제목·본문 계약, `harness check`의 링크·보존 검사 |
+| 등록된 Dae-Jeong current domain | [제품 진입 규칙](../../wiki/sources/Dae-Jeong/AGENTS.md), 제품 `tools/validate_workspace.py`와 `wiki/rules/copy-gates.yaml`. 제품 루트에서 `uv run --project tools python tools/validate_workspace.py` 실행. 중앙은 선택 범위·Markdown/YAML/JSON 구문·링크·보존 검사 |
+
+제품 검사는 메타데이터·claim·registry·문안별 계약을 적용하며 모든 제품 본문에 공통 H2 순서를 강제하지 않습니다. 중앙 측정에서 `product-owned`로 분류됐다는 사실만으로 제품 검사 통과를 주장하지 않습니다. 제품 검사 결과는 해당 실행의 근거로 확인합니다. Log와 선택되지 않은 원본은 현재 형태 통일 대상이 아닙니다.
+
+파일별 SHA-256은 관측한 바이트를 식별하며 동시 편집 중 전체 원자적 스냅샷을 보장하지 않습니다. 내용 품질·최신성·근거 적합성은 측정하지 않습니다.
 
 ## 조사 근거와 적용 판단
 

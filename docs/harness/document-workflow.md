@@ -32,6 +32,7 @@ Run from the vault root after `uv sync --locked`:
 ```sh
 uv run python -m harness check
 uv run python -m harness structure wiki/notes/example.md
+uv run python -m harness.structure_audit
 uv run python -m harness snapshot wiki/notes/example.md --reason 'Explain the change'
 uv run python -m harness verify wiki/log/<record>
 uv run python -m harness checkpoint
@@ -148,16 +149,24 @@ changes invalidate the current index. The product validator remains responsible
 for lifecycle transitions, frozen payload integrity and the correctness of owner
 pointers. Current-scope selection does not certify freshness or replace review.
 
-`structure [file]` checks the [role templates](document-templates.md) and returns
-nonzero for missing required sections, unresolved template variables, invalid
-role metadata and invalid review dates. Optional template sections can be omitted.
-Without a file it covers current Notes and Projects; an individual Log may be
-checked explicitly. Unknown Note purposes require classification rather than a
-silent fallback. Global enforcement requires `document_contract: 1` in the registry;
-this machine enables it after current Notes and Projects passed reviewed role adoption
-and the complete structure check. The ordinary check now includes role validation.
-This setting does not certify factual freshness or include original Sources and Log
-in current-document template enforcement.
+`structure [file]` checks the [role templates and form contracts](document-templates.md).
+Failures include missing required sections, unresolved template variables, invalid
+role metadata/dates, multiple or missing H1 titles, duplicate H2 headings and template
+sections out of order. Conditional sections may be omitted; when present they retain
+template order. Additional sections are allowed. Fenced examples are not headings.
+
+Without a file, the command covers current Notes and Projects plus the basic form
+of README, AGENTS, docs, Wiki index and Profile. Basic-form documents do not inherit
+Note metadata or section requirements. An individual Log can be checked explicitly.
+Unknown Note purposes fail rather than falling back. With `document_contract: 1`,
+the ordinary check also enforces these rules.
+
+`python -m harness.structure_audit` aggregates the same validator's per-file diagnostics,
+role pass rates and validation responsibility. It exits nonzero for contract failures
+or unassigned owners. Registered product-domain owners remain outside shared template
+pass-rate denominators; run their product validator separately. Optional retrieval
+metadata coverage is not a required-field failure. Original sources and Log are not
+included in the current-form census. These checks do not certify factual freshness.
 
 ## Checkpoint Coordination
 
