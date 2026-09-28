@@ -188,6 +188,16 @@ class WorkHookTests(unittest.TestCase):
         self.assertIn('Session ID: reader', message)
         self.assertIn('--agent codex --session reader', message)
 
+    def test_session_start_delivers_actual_routes_to_both_agents(self):
+        (self.vault / 'wiki/index.md').write_text('# Map\n## Knowledge Routes\nShared guide route')
+        (self.task.parent.parent / 'index.md').write_text('# Project\n## Knowledge Routes\nProduct contract route')
+        for agent in ('codex', 'claude'):
+            message = self.event('SessionStart', agent=agent, session='route-reader')['hookSpecificOutput']['additionalContext']
+            self.assertIn('Shared guide route', message)
+            self.assertIn('Product contract route', message)
+            self.assertIn('links_relative_to', message)
+            self.assertIn(str(self.vault), message)
+
     def test_unknown_shell_document_change_still_checks_preservation(self):
         self.event('PreToolUse', name='Bash', data={'command': 'external-script'})
         self.task.write_text(self.task.read_text() + '\nUnpreserved edit\n')

@@ -63,7 +63,7 @@ uv run python -m harness context /absolute/project/path --task TASK_ID --query '
 
 기존 Task의 전체 내용을 읽고 실제 저장소 상태와 대조한 뒤 작업을 이어갑니다. `context`는 같은 worktree의 미완료 호출도 반환합니다. 남아 있는 호출은 writer 종료와 파일 상태를 확인한 후 명시적으로 조정합니다.
 
-실질적인 작성·수정·설계 전에는 프로젝트 지식 경로와 현재 주제·피드백 검색에서 관련 자료를 찾습니다. `--query`는 전체 Task와 함께 현재 검색 후보를 최대 5개 반환합니다. 모든 검색어가 포함된 결과를 찾으므로 결과가 없으면 짧은 주제어·다른 언어와 프로젝트 경로를 확인합니다. 정본의 적용 범위를 읽고 선택한 판단을 기존 Task의 수용 기준에 연결한 뒤 실제 산출물에서 대조합니다. 검색 성공은 지식 적용이나 산출물 품질 검증을 뜻하지 않습니다. [공통 지식 활용 절차](wiki/notes/agents/work-management-policy.md#use-existing-knowledge)를 따릅니다.
+실질적인 작성·수정·설계 전에는 프로젝트 지식 경로와 현재 주제·피드백 검색에서 관련 자료를 찾습니다. `context`는 공통·프로젝트 index의 Knowledge Routes를 짧게 보여줍니다. `--query`는 전체 Task와 함께 본문 없는 검색 후보 카드를 최대 5개 반환합니다. `--brief` 검색도 같은 카드를 사용합니다. 선언된 용도·적용 상황·추천 문단을 보고 선택한 원문 구간을 읽습니다. 모든 검색어가 포함된 결과를 찾으므로 결과가 없으면 짧은 주제어·다른 언어와 프로젝트 경로를 확인합니다. 정본의 적용 범위를 읽고 선택한 판단을 기존 Task의 수용 기준에 연결한 뒤 실제 산출물에서 대조합니다. 검색 성공은 지식 적용이나 산출물 품질 검증을 뜻하지 않습니다. [공통 지식 활용 절차](wiki/notes/agents/work-management-policy.md#use-existing-knowledge)를 따릅니다.
 
 `work_contract: 1`인 등록 프로젝트의 코드 작업은 세션을 Task에 연결합니다. `SESSION_ID`는 SessionStart가 알려 준 접두어 없는 ID입니다.
 
@@ -78,12 +78,14 @@ Claude는 `--agent claude`를 사용합니다. 원인이 불명확한 shell 관�
 ### 문서 검색
 
 ```sh
+uv run python -m harness search '검색어' --brief
 uv run python -m harness search '검색어'
+uv run python -m harness read wiki/notes/example.md
 uv run python -m harness search '원문 근거' --scope sources
 uv run python -m harness search '과거 결정' --scope history
 ```
 
-기본 검색은 현재 문서만 조회합니다. `current_domains`가 명시적으로 선택한 제품 Markdown·YAML·JSON 원장도 포함합니다. Sources 안에 있다는 이유만으로 모든 문서를 현재 owner로 취급하지 않습니다. 검색 결과의 정본과 확인 범위를 읽어 적용 가능성을 판단합니다.
+기본 검색은 현재 문서만 조회합니다. `current_domains`가 명시적으로 선택한 제품 Markdown·YAML·JSON 원장도 포함합니다. Sources 안에 있다는 이유만으로 모든 문서를 현재 owner로 취급하지 않습니다. 검색 결과의 정본과 확인 범위를 읽어 적용 가능성을 판단합니다. `read`는 추천 절과 적용 범위·근거를 함께 반환합니다. 추천 절이 없는 문서는 `--section`으로 선택하고, 잘린 결과는 `next_offset`과 `--expected-hash`로 이어 읽습니다. Task 인수는 `context --task`로 전문을 읽습니다.
 
 ### 역할별 템플릿 검사
 

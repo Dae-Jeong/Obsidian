@@ -191,3 +191,13 @@ changed 상태도 reconcile할 수 있습니다. 원래 changes는 유지하고 
 - [검사 범위 검토](../../wiki/projects/llm-wiki/reviews/content-audit.md): 현재 관리 범위의 미해결 사항.
 
 단일 진입점·pending 관리·재시도 한도는 이 프로젝트의 구현 판단입니다. 두 런타임의 이벤트 전체가 동일하다고 가정하지 않습니다.
+
+## Startup Knowledge Navigation
+
+For registered work-contract projects, SessionStart includes shared and project
+Knowledge Routes from context, each capped at 2,400 characters with source hash,
+relative-link base and truncation. It includes the vault root for command execution
+and link resolution. The same payload reaches Codex and Claude; no duplicate routing
+catalogue is maintained in adapters. This adds relevant entry information, not proof
+that an agent searched, read or applied it. Read-only substantive proposals use the
+same discovery process without creating artificial Tasks or evidence records.

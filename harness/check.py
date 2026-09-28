@@ -13,6 +13,7 @@ from harness.checkpoint import issues as preservation_issues
 from harness.layout import issues as layout_issues
 from harness.structure import enabled as structure_enabled, validate as validate_structure
 from harness import domains
+from harness.retrieval import metadata as retrieval_metadata
 
 
 STATUSES = {"ready", "active", "blocked", "review", "done", "cancelled"}
@@ -78,6 +79,10 @@ def check(root, strict_tasks=True, *, initialize=False):
             error(rel, "metadata", str(exc))
             continue
         docs.append(doc)
+        try:
+            retrieval_metadata(doc)
+        except ValueError as exc:
+            error(rel, "retrieval-metadata", str(exc))
         if enforce_structure:
             issues.extend(validate_structure(doc))
         for heading, _ in sections(doc.body):

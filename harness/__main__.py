@@ -31,6 +31,12 @@ def main():
     lookup.add_argument("workspace", type=Path)
     lookup.add_argument("--task")
     lookup.add_argument("--query", help="Find bounded current knowledge candidates for the work topic; does not verify application")
+    reading = sub.add_parser('read', help='Read selected current sections with applicability and evidence')
+    reading.add_argument('path')
+    reading.add_argument('--section', action='append', dest='selected')
+    reading.add_argument('--offset', type=int, default=0)
+    reading.add_argument('--limit', type=int, default=6000)
+    reading.add_argument('--expected-hash')
     work = sub.add_parser('work', help='Bind code observations to a central Task and execution evidence')
     actions = work.add_subparsers(dest='work_command', required=True)
     binding = actions.add_parser('bind')
@@ -50,6 +56,7 @@ def main():
     index = sub.add_parser("index")
     query = sub.add_parser("search")
     query.add_argument("query")
+    query.add_argument("--brief", action="store_true", help="Return discovery cards without body excerpts")
     query.add_argument("--limit", type=int, default=5)
     for command in (index, query):
         command.add_argument("--scope", choices=("current", "sources", "history"), default="current")
@@ -70,6 +77,10 @@ def main():
             else:
                 result = work.status(root, key, args.workspace)
             status = 1 if args.work_command == 'status' and result['issues'] else 0
+        elif args.command == 'read':
+            from harness.retrieval import read
+            result = read(root, args.path, args.selected, offset=args.offset, limit=args.limit, expected_hash=args.expected_hash)
+            status = 0
         elif args.command == "structure":
             from harness.structure import check_structure, check_file
             if args.file:
@@ -103,7 +114,7 @@ def main():
             if args.command == "index":
                 result = {"revision": build(root, database, args.scope), "scope": args.scope}
             else:
-                result = search(root, database, args.query, args.scope, args.limit)
+                result = search(root, database, args.query, args.scope, args.limit, brief=args.brief)
             status = 0
         print(json.dumps(result, ensure_ascii=False, indent=2, default=str))
         return status

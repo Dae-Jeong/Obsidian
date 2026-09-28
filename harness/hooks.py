@@ -340,7 +340,13 @@ def handle(root, agent, payload):
             return output(event, 'info', 'context',
                           f'Agent: {agent}. Session ID: {raw_session}. CLI identity: --agent {agent} --session {raw_session}. Workspace: {cwd}. Read {root}/wiki/notes/agents/work-management-policy.md and the full central Task. '
                           'Bind this session to its Task before code changes; update the Task and record actual evidence before finishing. '
-                          'Unfinished work in this worktree: ' + json.dumps(owner['unfinished_work'], ensure_ascii=False))
+                          'Unfinished work in this worktree: ' + json.dumps(owner['unfinished_work'], ensure_ascii=False) +
+                          f' Knowledge discovery root: {root}. Before substantive writing, design or troubleshooting advice, '
+                          'including read-only proposals, select relevant guidance from these routes and read its applicability '
+                          'and evidence before answering. Simple factual lookups need no invented Task. '
+                          'Use search --brief for topic candidates and read PATH for selected sections from this root. '
+                          'Routes (links resolve against links_relative_to under the discovery root): ' +
+                          json.dumps(owner['navigation'], ensure_ascii=False))
         return response
     if event == 'PreToolUse':
         if name not in {'Bash', 'Edit', 'Write', 'MultiEdit', 'apply_patch'}:

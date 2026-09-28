@@ -79,7 +79,7 @@ deletions; stale indexes rebuild locally. Current queries exclude Log and unsele
 
 ## Preservation and Template Scope
 
-For substantial creation or revision, follow the project index's knowledge routes and search by work topic before drafting. Optional `context --query` uses the same current search, returns at most five distinct document candidates with excerpts up to 900 characters and hashes, and retains the selected full Task. It does not search history or unselected sources, infer semantic relevance, or mark knowledge as applied. Omitting the option leaves context discovery available without an index lookup.
+For substantial creation or revision, follow the project index's knowledge routes and search by work topic before drafting. Optional `context --query` uses the same current search, returns at most five distinct discovery cards without body excerpts and with hashes, and retains the selected full Task. It does not search history or unselected sources, infer semantic relevance, or mark knowledge as applied. Without a query, context returns up to 2,400 characters each from shared and project index Knowledge Routes sections, with hashes, relative-link bases and explicit truncation, without an index lookup.
 
 An explicitly empty query fails. No matches return an empty list, not a claim that no relevant knowledge exists. All query terms must match: shorten the query, try another language and inspect project routes. Read selected owners and applicability, state the expected effect in existing Task criteria, and compare the actual artifact in the existing result/review. Search and structural checks cannot certify understanding or quality. The [shared knowledge procedure](../../wiki/notes/agents/work-management-policy.md#use-existing-knowledge) owns this acceptance process.
 
@@ -210,3 +210,62 @@ This is CI-style validation used by agents and local commands. No administrator
 service is required. The rules require clients to preserve history and pass
 checks; they do not prevent arbitrary filesystem edits by the same user.
 Natural-language correctness and latest-only meaning require a content review.
+
+## Discovery Metadata
+
+Question routes stay in existing index.md owners under `## Knowledge Routes` when
+needed in context output. Root routes cover shared questions; project routes cover
+product-specific decisions. Do not duplicate a full catalogue in every project.
+
+Use `harness search 'topic' --brief` to inspect candidates before reading selected
+owner sections. Ordinary search includes up to 900 characters from a matching section.
+Both modes match all terms, including declared aliases and applicability. Missing
+metadata requires direct applicability review. Recommended sections are entry points,
+not an exhaustive read contract. Follow evidence for factual claims and read full
+Tasks for resumption.
+
+Inspected reusable Markdown owners may declare optional frontmatter:
+
+```yaml
+retrieval:
+  description: What this document explains
+  use_when: When to consult it and its main applicability limit
+  role: guidance
+  aliases: [retry, idempotency]
+  sections: [Applicability, Evidence]
+```
+
+All five fields are required when retrieval is present. Description and use_when are
+nonempty strings of at most 240 characters. Role is guidance, policy, evidence or
+navigation: responsibility, not certified truth or priority over user instructions.
+Aliases contain 1–8 unique strings; sections contain 1–4 unique strings. Each is at
+most 120 characters. Sections must exist uniquely in the owner. `check` reports
+`retrieval-metadata` for violations; current indexing rejects invalid declarations.
+Do not classify unread documents or advance checked because navigation changed.
+Existing type, checked and verification are declarations, not fresh validation.
+
+SQLite is rebuilt from Markdown on schema or corpus change. It is not a second
+editable metadata owner. Hashes identify document bytes; checks cannot certify
+relevance, understanding or application in an artifact.
+
+## Reading Selected Sections
+
+`harness read wiki/notes/example.md` reads its declared recommended sections and
+any local Applicability, Constraints, Evidence, Authority, Prerequisites and Verification
+sections. `--section HEADING` (repeatable) selects other exact unique headings;
+sections include their child headings. Documents without retrieval metadata require
+explicit section selection. Overlapping selections return each source line once.
+
+Output is bounded to 6,000 characters by default (`--limit` 100–12,000), with total
+characters, offset, next_offset, truncation and owner hash. Continue with `--offset`
+and `--expected-hash`; changed owners are rejected rather than mixing revisions.
+Recommended sections do not imply sufficient evidence for every question. Follow
+linked original evidence if the claim requires it. Current Markdown owners only are
+accepted; source/history archives and symlinks are excluded. Tasks require full
+`context --task` or direct owner reading, not a partial read for handoff.
+
+Registered-project SessionStart delivers the context's shared and project routes to
+both agent adapters. This supplies a bounded starting point even if an agent does
+not invoke context itself. Read-only writing/design/troubleshooting proposals still
+need applicable knowledge; they do not need invented Tasks. Route delivery, reading
+and semantic application are separate verification steps.

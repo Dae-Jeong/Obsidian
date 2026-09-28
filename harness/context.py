@@ -6,7 +6,7 @@ import subprocess
 import sqlite3
 from contextlib import closing
 
-from harness.documents import parse
+from harness.documents import parse, sections
 from harness.readiness import ensure_readable
 
 
@@ -90,9 +90,20 @@ def context(root, workspace, task=None, query=None):
                            "for the task topic and relevant feedback. Select applicable guidance and verify it against "
                            "the resulting artifact; retrieval is not application evidence. "
                            "Do not infer product completion from metadata or start every listed task."}
+    navigation = []
+    for path, heading in ((root / 'wiki/index.md', 'Knowledge Routes'), (folder / 'index.md', 'Knowledge Routes')):
+        if not path.is_file():
+            continue
+        doc = parse(path.relative_to(root).as_posix(), path.read_bytes())
+        for name, body in sections(doc.body):
+            if name == heading:
+                navigation.append({'path': doc.path, 'heading': name, 'content': body[:2400],
+                                   'sha256': doc.sha256, 'truncated': len(body) > 2400,
+                                   'links_relative_to': str(path.parent.relative_to(root))})
+    result['navigation'] = navigation
     if query is not None:
         from harness.search import search
-        result['knowledge'] = search(root, root / '.local/harness/current.sqlite', query)
+        result['knowledge'] = search(root, root / '.local/harness/current.sqlite', query, brief=True)
         result['knowledge'].update(query=query, verification='retrieval-only')
-        ensure_readable(root, publication)
+    ensure_readable(root, publication)
     return result
