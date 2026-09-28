@@ -19,6 +19,8 @@ verification: unverified
 
 <!-- Required: use one row per criterion or review unit: ID | target | expected result | observed result | verdict | evidence. Verdicts are pass, fail, unverified or not-applicable; explain not-applicable. Keep unexamined items in the table as unverified. -->
 
+<!-- Conditional: when knowledge guided the work, compare its selected judgment with the actual artifact passage, behavior or rendered output. Link the source and target; fail a missing required application even when the source is linked. Do not treat advice as authority to invent facts. -->
+
 ## Limits and Remaining Work
 
 <!-- Required: identify missing access, untested behavior, source uncertainty and unresolved findings. Say none only if justified by the declared scope. -->

@@ -19,13 +19,19 @@ evidence: []
 
 <!-- Required: identify authorized work, affected owners, workspace and constraints. Link governing project instructions. -->
 
+<!-- Conditional: for substantial creation or revision, link the relevant knowledge selected from project routes/current search and state its applicability. Use a short paragraph here; do not copy source bodies or add a separate checklist. -->
+
 ## Acceptance Criteria
 
 <!-- Required: give each criterion a stable label, expected outcome and verification method. A completed action alone is not acceptance. -->
 
+<!-- Conditional: translate selected guidance into an observable artifact criterion. A source link or claim that it was read is not evidence of application. -->
+
 ## Current Result
 
 <!-- Required: describe only the present state, concrete artifacts, checked revision or environment, evidence and remaining uncertainty. If not started, say so. Keep execution history in Log. -->
+
+<!-- Conditional: link the resulting artifact location and actual review of the selected guidance; mark missing or conflicting application explicitly. Keep query trails and rejected alternatives in existing Log evidence. -->
 
 ## Unresolved Conditions
 

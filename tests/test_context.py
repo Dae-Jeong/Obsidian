@@ -10,6 +10,41 @@ from harness.context import context, git_common, git_environment
 
 
 class ContextTests(unittest.TestCase):
+    def test_topic_candidates_preserve_task_and_exclude_history(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / '.local/harness').mkdir(parents=True)
+            project = root / 'wiki/projects/writer'
+            (project / 'tasks').mkdir(parents=True)
+            (project / 'index.md').write_text('# Writer')
+            (project / 'tasks/work.md').write_text('---\nid: writer.work\nstatus: active\n---\n# Scope\nFull authorization and limits')
+            (root / '.local/harness/projects.json').write_text(json.dumps({'projects': [
+                {'id': 'writer', 'root': str(root), 'documents': 'wiki/projects/writer'}]}))
+            notes = root / 'wiki/notes'
+            notes.mkdir()
+            for number in range(7):
+                (notes / f'guide-{number}.md').write_text(f'# Resume portfolio guide\nSelect relevant experience {number}.')
+            for scope in ('log', 'sources'):
+                folder = root / 'wiki' / scope
+                folder.mkdir()
+                (folder / 'old.md').write_text('# Resume portfolio guide\nHistorical advice is not current.')
+            result = context(root, root, 'writer.work', query='resume portfolio guide')
+            self.assertIn('Full authorization', result['tasks'][0]['content'])
+            candidates = result['knowledge']['hits']
+            self.assertEqual(len(candidates), 5)
+            self.assertTrue(all(hit['path'].startswith('wiki/notes/') for hit in candidates))
+            self.assertTrue(all(len(hit['excerpt']) <= 900 and hit['sha256'] for hit in candidates))
+            self.assertEqual(result['knowledge']['verification'], 'retrieval-only')
+            before = result['knowledge']['revision']
+            (notes / 'guide-0.md').write_text('# Resume portfolio guide\nUpdated selection advice.')
+            refreshed = context(root, root, query='resume portfolio guide')['knowledge']
+            self.assertNotEqual(before, refreshed['revision'])
+            self.assertTrue(refreshed['rebuilt'])
+            self.assertEqual(context(root, root, query='unrelated topic')['knowledge']['hits'], [])
+            with self.assertRaisesRegex(ValueError, 'nonempty'):
+                context(root, root, query='   ')
+            self.assertNotIn('knowledge', context(root, root))
+
     def test_two_repositories_and_worktree_resolve_independently(self):
         with tempfile.TemporaryDirectory() as temp:
             base = Path(temp)

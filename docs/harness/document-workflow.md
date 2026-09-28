@@ -36,6 +36,7 @@ uv run python -m harness snapshot wiki/notes/example.md --reason 'Explain the ch
 uv run python -m harness verify wiki/log/<record>
 uv run python -m harness checkpoint
 uv run python -m harness search 'query'
+uv run python -m harness context /absolute/project/path --task TASK_ID --query 'topic terms'
 uv run python -m harness search 'historical question' --scope history
 uv run python -m harness search 'original evidence' --scope sources
 uv run python -m harness catalog --output wiki/log/<new-register-record>
@@ -77,6 +78,10 @@ before resuming work. Whole-corpus hashes detect additions, edits, moves and
 deletions; stale indexes rebuild locally. Current queries exclude Log and unselected source archives; selected current domain owners remain searchable.
 
 ## Preservation and Template Scope
+
+For substantial creation or revision, follow the project index's knowledge routes and search by work topic before drafting. Optional `context --query` uses the same current search, returns at most five distinct document candidates with excerpts up to 900 characters and hashes, and retains the selected full Task. It does not search history or unselected sources, infer semantic relevance, or mark knowledge as applied. Omitting the option leaves context discovery available without an index lookup.
+
+An explicitly empty query fails. No matches return an empty list, not a claim that no relevant knowledge exists. All query terms must match: shorten the query, try another language and inspect project routes. Read selected owners and applicability, state the expected effect in existing Task criteria, and compare the actual artifact in the existing result/review. Search and structural checks cannot certify understanding or quality. The [shared knowledge procedure](../../wiki/notes/agents/work-management-policy.md#use-existing-knowledge) owns this acceptance process.
 
 Preservation covers full bytes of current Markdown and non-Markdown companions
 under notes, projects and docs. Companion edits also invalidate the current

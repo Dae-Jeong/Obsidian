@@ -24,7 +24,7 @@ def git_common(workspace):
     return str(Path(result.stdout.strip()).resolve()) if result.returncode == 0 else None
 
 
-def context(root, workspace, task=None):
+def context(root, workspace, task=None, query=None):
     root = root.resolve()
     publication = ensure_readable(root)
     workspace = workspace.resolve()
@@ -82,8 +82,17 @@ def context(root, workspace, task=None):
             if not call['task']:
                 call['issues'].append('work-task-missing')
     ensure_readable(root, publication)
-    return {"project_id": project["id"], "index": str(folder.relative_to(root.resolve()) / "index.md"),
+    result = {"project_id": project["id"], "index": str(folder.relative_to(root.resolve()) / "index.md"),
             "policy": "wiki/notes/agents/work-management-policy.md", "workspace": str(workspace),
             "git_common_dir": common, "tasks": tasks, "unfinished_work": unfinished,
             "instruction": "Read the chosen full Task, reconcile workspace and active writers, then continue authorized work. "
+                           "Before substantial creation or revision, use the project knowledge routes and current search "
+                           "for the task topic and relevant feedback. Select applicable guidance and verify it against "
+                           "the resulting artifact; retrieval is not application evidence. "
                            "Do not infer product completion from metadata or start every listed task."}
+    if query is not None:
+        from harness.search import search
+        result['knowledge'] = search(root, root / '.local/harness/current.sqlite', query)
+        result['knowledge'].update(query=query, verification='retrieval-only')
+        ensure_readable(root, publication)
+    return result

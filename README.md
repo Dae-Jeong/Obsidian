@@ -58,9 +58,12 @@ uv sync --locked
 ```sh
 uv run python -m harness context /absolute/project/path
 uv run python -m harness context /absolute/project/path --task TASK_ID
+uv run python -m harness context /absolute/project/path --task TASK_ID --query '작업 주제'
 ```
 
 기존 Task의 전체 내용을 읽고 실제 저장소 상태와 대조한 뒤 작업을 이어갑니다. `context`는 같은 worktree의 미완료 호출도 반환합니다. 남아 있는 호출은 writer 종료와 파일 상태를 확인한 후 명시적으로 조정합니다.
+
+실질적인 작성·수정·설계 전에는 프로젝트 지식 경로와 현재 주제·피드백 검색에서 관련 자료를 찾습니다. `--query`는 전체 Task와 함께 현재 검색 후보를 최대 5개 반환합니다. 모든 검색어가 포함된 결과를 찾으므로 결과가 없으면 짧은 주제어·다른 언어와 프로젝트 경로를 확인합니다. 정본의 적용 범위를 읽고 선택한 판단을 기존 Task의 수용 기준에 연결한 뒤 실제 산출물에서 대조합니다. 검색 성공은 지식 적용이나 산출물 품질 검증을 뜻하지 않습니다. [공통 지식 활용 절차](wiki/notes/agents/work-management-policy.md#use-existing-knowledge)를 따릅니다.
 
 `work_contract: 1`인 등록 프로젝트의 코드 작업은 세션을 Task에 연결합니다. `SESSION_ID`는 SessionStart가 알려 준 접두어 없는 ID입니다.
 

@@ -30,6 +30,7 @@ def main():
     lookup = sub.add_parser("context")
     lookup.add_argument("workspace", type=Path)
     lookup.add_argument("--task")
+    lookup.add_argument("--query", help="Find bounded current knowledge candidates for the work topic; does not verify application")
     work = sub.add_parser('work', help='Bind code observations to a central Task and execution evidence')
     actions = work.add_subparsers(dest='work_command', required=True)
     binding = actions.add_parser('bind')
@@ -95,7 +96,7 @@ def main():
             result = checkpoint(root, args.initialize)
             status = 0
         elif args.command == "context":
-            result = context(root, args.workspace, args.task)
+            result = context(root, args.workspace, args.task, query=args.query)
             status = 0
         else:
             database = root / ".local/harness" / f"{args.scope}.sqlite"
