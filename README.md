@@ -116,6 +116,16 @@ uv run python -m harness.install_hooks
 
 설치기는 두 도구의 설정에 중앙 어댑터를 등록합니다. 훅은 `.venv/bin/python`으로 `harness/hooks.py`를 직접 실행합니다. 설정 등록 후에는 도구별 신뢰 상태와 실제 실행을 확인해야 합니다. [어댑터 설계·설정](docs/harness/agent-hooks-design.md)에 이벤트별 동작과 검증 범위를 설명합니다.
 
+## 작업 감독과 오케스트레이션
+
+vault의 메인 세션은 Task 범위·worker 배정·결과 검토·다음 행동을 소유합니다. 제품 편집은 제품 repo에서 시작한 worker가 수행합니다. 절차는 [Main Session Orchestration](wiki/notes/agents/work-management-policy.md#main-session-orchestration), 흐름·명령·한계는 [감독 흐름 안내](docs/harness/document-workflow.md#supervised-orchestration)를 따릅니다.
+
+- 선택형 [compact scheduler](orchestration/docs/project-scheduler.md)는 수동으로 시작하는 `run`·`tick`과 조회 전용 `watch`를 제공합니다.
+- worker와 메인은 Task Markdown 항목을 질문·답변·막힘·완료로 참조하고, [Task 항목 참조 이벤트](orchestration/docs/scheduler-task-events.md)로 hash 검증·처리·ACK를 SQLite에 기록합니다.
+- 전달은 pull 방식입니다. 수신자가 활성 세션에서 `wait`·`claim`을 실행해야 처리됩니다. Markdown 수정만으로는 이벤트가 발행되지 않으며, idle 세션 깨우기와 승인 대기·중단을 자동 감지해 메인에 통지하는 hook은 없습니다.
+- 일반 대화형 TUI CLI는 수동으로 참여할 수 있습니다. scheduler의 일반 TUI 실행 통합은 구현되지 않았습니다.
+- 실제 worker 왕복은 Claude·Kiro에서 확인했습니다. Codex worker는 준비 확인 실패로 prompt 전달 전에 중단되어 미검증입니다. 같은 검증의 Codex 메인은 이벤트를 수신하고 답변했습니다.
+
 ## 개발과 검증
 
 ```sh

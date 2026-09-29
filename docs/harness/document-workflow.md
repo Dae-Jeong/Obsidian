@@ -278,3 +278,39 @@ both agent adapters. This supplies a bounded starting point even if an agent doe
 not invoke context itself. Read-only writing/design/troubleshooting proposals still
 need applicable knowledge; they do not need invented Tasks. Route delivery, reading
 and semantic application are separate verification steps.
+
+## Supervised Orchestration
+
+The [shared work policy](../../wiki/notes/agents/work-management-policy.md#main-session-orchestration)
+owns supervision rules; the orchestration submodule owns executable contracts. This
+section only connects the flow.
+
+1. The central Task owns scope, acceptance criteria, current result and next action.
+   The vault main session records the dispatch identity and return path there, then
+   dispatches through one protocol: Orca native dispatch or the optional compact
+   scheduler. Product edits run in a worker rooted at the product repository.
+2. Workers bind their real session with `harness work bind`, snapshot before writes,
+   and ask or report through the selected protocol. The main reviews the actual
+   artifact and Task evidence before acceptance; a worker report is not acceptance.
+3. The optional [compact scheduler](../../orchestration/docs/project-scheduler.md) is
+   started manually with `tick` or `run`; `watch` is a read-only progress view.
+   [Assignment](../../orchestration/docs/scheduler-assignment.md) and
+   [messaging](../../orchestration/docs/scheduler-messaging.md) define its
+   attempt contracts.
+4. [Task item reference events](../../orchestration/docs/scheduler-task-events.md)
+   exchange questions, answers, blocked and completed notices as `<!-- item:ID -->`
+   blocks in the Task. SQLite stores only the envelope, item hash, delivery,
+   processing report and ACK. Use `ref publish`, then the recipient runs
+   `ref wait`/`claim`, `read`, `processed` and `ack`. ACK records processing; it is
+   not question resolution or Task completion.
+
+Limits: delivery is pull-based. The recipient must actively run `wait` or `claim`.
+Editing Markdown does not publish an event; publish each Task item explicitly. There
+is no idle-session wake-up and no hook that automatically detects approval waits or
+interruptions and notifies the main. A normal interactive TUI CLI can take part manually, but
+scheduler integration for normal TUI workers is not implemented.
+
+Verified scope: real Claude and Kiro workers completed the question → answer → ACK →
+blocked/resume → completed round trip. The Codex worker failed startup readiness
+before prompt delivery and remains unverified as a worker. The supervising main in
+that run was Codex and did receive and answer the events. See the product [validation report](../../orchestration/docs/project-scheduler-validation.md#task-item-reference-events).

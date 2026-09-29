@@ -11,3 +11,5 @@
 9. Preserve unrelated dirty work. The independent `orchestration/` submodule has its own AGENTS.md and README.md; do not fold its changes into the parent.
 
 10. For named project start, resume, or status requests from this vault, read [project-orchestrator](orchestration/skills/project-orchestrator/SKILL.md). It routes to existing project/Task owners. Product edits run in a session rooted at the product repo; changing a shell directory does not change harness session ownership.
+
+11. When this Obsidian session supervises workers, follow [Main Session Orchestration](wiki/notes/agents/work-management-policy.md#main-session-orchestration) before dispatch and through result acceptance or verified ownership handoff.
