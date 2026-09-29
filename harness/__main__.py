@@ -9,6 +9,7 @@ from harness.search import build, search
 from harness.checkpoint import checkpoint
 from harness.preserve import snapshot, verify
 from harness.catalog import export as export_catalog
+from harness.work import WORK_AGENTS
 
 
 def main():
@@ -50,8 +51,14 @@ def main():
     recovery = actions.add_parser('reconcile')
     recovery.add_argument('--tool', required=True)
     recovery.add_argument('--reason', required=True)
-    for action in (binding, recording, inspection, recovery):
-        action.add_argument('--agent', choices=('codex', 'claude'), required=action is not inspection)
+    beginning = actions.add_parser('begin', help='Manually observe explicit workspace-relative file targets before editing')
+    beginning.add_argument('workspace', type=Path)
+    beginning.add_argument('--tool', required=True, help='Unique observation ID within the real session')
+    beginning.add_argument('--target', action='append', required=True, dest='targets')
+    finishing = actions.add_parser('finish', help='Close a manual observation after the writer finishes')
+    finishing.add_argument('--tool', required=True)
+    for action in (binding, recording, inspection, recovery, beginning, finishing):
+        action.add_argument('--agent', choices=WORK_AGENTS, required=action is not inspection)
         action.add_argument('--session', required=action is not inspection)
     index = sub.add_parser("index")
     query = sub.add_parser("search")
@@ -74,6 +81,10 @@ def main():
                 result = work.record(root, key, args.evidence, args.reconciliation)
             elif args.work_command == 'reconcile':
                 result = work.reconcile(root, key, args.tool, args.reason)
+            elif args.work_command == 'begin':
+                result = work.begin(root, key, args.tool, args.workspace, args.targets)
+            elif args.work_command == 'finish':
+                result = work.finish(root, key, args.tool)
             else:
                 result = work.status(root, key, args.workspace)
             status = 1 if args.work_command == 'status' and result['issues'] else 0

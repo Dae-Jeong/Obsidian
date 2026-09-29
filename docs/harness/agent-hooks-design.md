@@ -201,3 +201,28 @@ and link resolution. The same payload reaches Codex and Claude; no duplicate rou
 catalogue is maintained in adapters. This adds relevant entry information, not proof
 that an agent searched, read or applied it. Read-only substantive proposals use the
 same discovery process without creating artificial Tasks or evidence records.
+
+## Kiro Manual Observation
+
+The work CLI accepts a real `kiro` session identity for explicit observation.
+This does not install Kiro hooks or automatically detect its edits. Obtain the
+raw session ID from `kiro-cli chat --list-sessions --format json` in the product
+workspace; never substitute a Codex/Claude identity. Run central commands from
+the vault, while the Kiro session itself stays rooted in the product repo.
+
+```sh
+uv run python -m harness work bind /absolute/product/repo --task TASK_ID --agent kiro --session RAW_SESSION_ID
+uv run python -m harness work begin /absolute/product/repo --tool edit-1 --target path/to/file.py --agent kiro --session RAW_SESSION_ID
+# Edit only the declared scope, then wait for its writer to finish.
+uv run python -m harness work finish --tool edit-1 --agent kiro --session RAW_SESSION_ID
+# Update the central Task result/next action and save actual Log evidence.
+uv run python -m harness work record --evidence wiki/log/RUN/result.json --agent kiro --session RAW_SESSION_ID
+```
+
+Use a unique `--tool` value for every batch and repeat `--target` for all explicit
+workspace-relative files, including new/ignored targets. Existing Git observation
+scope, drift checks, interrupted-call reconciliation and evidence requirements
+remain unchanged. Preserve files before editing under the shared policy. A
+successful bind alone proves neither observation nor successful work; a manual
+begin/finish pair is required. Commands outside those pairs are not automatically
+covered, and arbitrary ignored shell writes remain outside the observation scope.

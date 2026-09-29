@@ -12,9 +12,9 @@ from harness.context import git_environment
 
 class WorkObservationTests(unittest.TestCase):
     def test_session_identity_rejects_agent_prefix_inside_raw_id(self):
-        for valid in ('codex:one', 'claude:session-1'):
+        for valid in ('codex:one', 'claude:session-1', 'kiro:real-session'):
             work.identity(valid)
-        for invalid in ('codex:codex:one', 'claude:claude:one', 'codex:', 'codex: one', 'codex:one\n'):
+        for invalid in ('codex:codex:one', 'claude:claude:one', 'kiro:kiro:one', 'unknown:one', 'kiro:', 'codex:', 'codex: one', 'codex:one\n'):
             with self.assertRaises(ValueError):
                 work.identity(invalid)
 
@@ -150,6 +150,24 @@ class WorkRecordTests(unittest.TestCase):
         result = self.record()
         self.assertTrue((self.vault / result['evidence']).is_file())
         self.assertEqual(work.status(self.vault, self.key)['issues'], [])
+
+    def test_kiro_manual_cli_observation_records_only_after_task_update(self):
+        import sys
+        def cli(*args):
+            return subprocess.run([sys.executable, '-m', 'harness', '--root', str(self.vault),
+                                   'work', *args, '--agent', 'kiro', '--session', 'real-session'],
+                                  cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True)
+        self.assertEqual(cli('bind', str(self.root), '--task', 'example.work').returncode, 0)
+        self.assertEqual(cli('begin', str(self.root), '--tool', 'edit-1', '--target', 'code.py').returncode, 0)
+        self.code.write_text('kiro change')
+        self.assertEqual(cli('finish', '--tool', 'edit-1').returncode, 0)
+        self.assertNotEqual(cli('record', '--evidence', 'wiki/log/result.md').returncode, 0)
+        self.task.write_text(self.task.read_text() + '\nKiro change verified; next action completed')
+        result = cli('record', '--evidence', 'wiki/log/result.md')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        receipt = json.loads((self.vault / json.loads(result.stdout)['evidence']).read_text())
+        self.assertEqual(receipt['session'], 'kiro:real-session')
+        self.assertEqual(work.status(self.vault, 'kiro:real-session')['issues'], [])
 
     def test_recorded_work_becomes_unrecorded_after_another_edit(self):
         self.bind()

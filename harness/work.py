@@ -11,6 +11,8 @@ import uuid
 
 from harness.context import git_environment
 
+WORK_AGENTS = ('codex', 'claude', 'kiro')
+
 
 def git(workspace, *args):
     result = subprocess.run(['git', '-C', str(workspace), *args],
@@ -108,9 +110,9 @@ def database(root):
 
 def identity(key):
     if (not isinstance(key, str) or key.count(':') != 1
-            or key.split(':', 1)[0] not in ('codex', 'claude')
+            or key.split(':', 1)[0] not in WORK_AGENTS
             or not key.split(':', 1)[1] or any(char.isspace() for char in key)):
-        raise ValueError('Work session must identify codex:SESSION or claude:SESSION')
+        raise ValueError('Work session must identify ' + ', '.join(f'{agent}:SESSION' for agent in WORK_AGENTS))
 
 
 def task_hash(root, row):
