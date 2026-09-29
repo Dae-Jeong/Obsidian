@@ -393,3 +393,173 @@ class WorkRecordTests(unittest.TestCase):
         result = subprocess.run(command + ['--agent', 'codex'], capture_output=True, text=True)
         self.assertEqual(result.returncode, 1)
         self.assertIn('both', json.loads(result.stderr)['error'])
+
+
+class WorkRecoveryMatrixTests(unittest.TestCase):
+    setUp = WorkRecordTests.setUp
+    git = WorkRecordTests.git
+    bind = WorkRecordTests.bind
+    begin = WorkRecordTests.begin
+    finish = WorkRecordTests.finish
+    record = WorkRecordTests.record
+
+    def test_explicit_ignored_edit_is_recorded_and_drift_checked(self):
+        from unittest.mock import patch
+        (self.root / '.gitignore').write_text('vault/\n.artifacts/\n')
+        folder = self.root / '.artifacts'
+        folder.mkdir()
+        target = folder / 'fixture.py'
+        target.write_text('before')
+        self.bind()
+        self.begin(selected=('.artifacts/fixture.py',))
+        target.write_text('after')
+        self.finish()
+        self.assertIn('work-unrecorded', work.status(self.vault, self.key)['issues'])
+        self.task.write_text(self.task.read_text() + '\nVerified ignored fixture; next done')
+        target.write_text('unobserved drift')
+        with self.assertRaisesRegex(ValueError, 'drift'):
+            self.record()
+        target.write_text('after')
+        result = self.record()
+        receipt = json.loads((self.vault / result['evidence']).read_text())
+        self.assertEqual(result['recorded'], 1)
+        self.assertEqual(set(receipt['observations'][0]['changes']), {'.artifacts/fixture.py'})
+
+    def test_noop_explains_scope_and_does_not_claim_no_changes_anywhere(self):
+        self.bind()
+        self.begin()
+        self.finish()
+        result = self.record()
+        self.assertEqual(result['recorded'], 0)
+        self.assertEqual(result['reason'], 'no_unrecorded_observations')
+        self.assertIn('ignored', result['scope'])
+
+    def test_disjoint_concurrent_calls_keep_separate_receipts(self):
+        self.bind()
+        self.bind('claude:two')
+        other = self.root / 'other.py'
+        other.write_text('initial')
+        self.begin()
+        self.begin(key='claude:two', selected=('other.py',))
+        self.code.write_text('A')
+        other.write_text('B')
+        self.finish()
+        self.finish(key='claude:two')
+        self.task.write_text(self.task.read_text() + '\nBoth file results verified')
+        a = self.record()
+        self.assertIn('work-unrecorded', work.status(self.vault, 'claude:two')['issues'])
+        b = work.record(self.vault, 'claude:two', 'wiki/log/result.md')
+        for result, key, file in ((a, self.key, 'code.py'), (b, 'claude:two', 'other.py')):
+            receipt = json.loads((self.vault / result['evidence']).read_text())
+            self.assertEqual(receipt['session'], key)
+            self.assertEqual(set(receipt['observations'][0]['changes']), {file})
+            self.assertFalse(receipt['observations'][0]['ambiguous'])
+
+    def test_receipt_failure_preserves_obligation_and_retry_records_once(self):
+        from unittest.mock import patch
+        self.bind()
+        self.begin()
+        self.code.write_text('real change')
+        self.finish()
+        self.task.write_text(self.task.read_text() + '\nVerified change and resume record')
+        with patch.object(work, 'write_receipt', side_effect=OSError('injected record interruption')):
+            with self.assertRaises(OSError):
+                self.record()
+        self.assertIn('work-unrecorded', work.status(self.vault, self.key)['issues'])
+        result = self.record()
+        self.assertEqual(result['recorded'], 1)
+        retry = self.record()
+        self.assertEqual(retry['recorded'], 0)
+        self.assertEqual(len(list((self.vault / 'wiki/log').glob('*/record.json'))), 1)
+
+    def test_process_dies_after_write_successor_sees_and_recovers(self):
+        self.bind()
+        script = (
+            'from pathlib import Path; import os; from harness import work; '
+            f'root=Path({str(self.vault)!r}); workspace=Path({str(self.root)!r}); '
+            f'work.begin(root, {self.key!r}, "crashed", workspace, ["code.py"]); '
+            '(workspace / "code.py").write_text("persisted before crash"); os._exit(17)'
+        )
+        import sys
+        child = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True)
+        self.assertEqual(child.returncode, 17, child.stderr)
+        from harness.context import context
+        successor = context(self.vault, self.root, 'example.work')
+        self.assertTrue(any(c['session'] == self.key and c['state'] == 'pending'
+                            for c in successor['unfinished_work']))
+        self.assertEqual(work.status(self.vault, 'codex:successor')['issues'], [])
+        with self.assertRaisesRegex(ValueError, 'pending'):
+            self.record()
+        work.reconcile(self.vault, self.key, 'crashed', 'Child exited 17; bytes inspected')
+        self.task.write_text(self.task.read_text() + '\nRecovered persisted bytes; next record')
+        result = self.record(reconciliation='Child exit and persisted bytes verified')
+        receipt = json.loads((self.vault / result['evidence']).read_text())
+        self.assertEqual(receipt['session'], self.key)
+        self.assertEqual(receipt['observations'][0]['changes']['code.py']['after'], manifest(self.root)['code.py'])
+
+
+    def test_crash_after_receipt_write_does_not_commit_completion(self):
+        import sys
+        self.bind()
+        self.begin()
+        self.code.write_text('changed before receipt')
+        self.finish()
+        self.task.write_text(self.task.read_text() + '\nVerified change; finish record')
+        script = f"""from pathlib import Path
+import os
+from harness import work
+original = work.write_receipt
+def interrupted(root, payload):
+    original(root, payload)
+    os._exit(19)
+work.write_receipt = interrupted
+work.record(Path({str(self.vault)!r}), {self.key!r}, 'wiki/log/result.md')
+"""
+        child = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True)
+        self.assertEqual(child.returncode, 19, child.stderr)
+        self.assertIn('work-unrecorded', work.status(self.vault, self.key)['issues'])
+        # A receipt file alone is not a committed record: SQLite rolled back.
+        self.assertEqual(len(list((self.vault / 'wiki/log').glob('*/record.json'))), 1)
+        result = self.record()
+        self.assertEqual(result['recorded'], 1)
+        self.assertEqual(work.status(self.vault, self.key)['issues'], [])
+        self.assertEqual(self.record()['recorded'], 0)
+
+    def test_two_processes_record_disjoint_changes_without_cross_attribution(self):
+        from contextlib import ExitStack
+        import sys
+        self.bind()
+        self.bind('claude:two')
+        (self.root / 'other.py').write_text('initial')
+        with ExitStack() as stack:
+            children = []
+            for key, name in ((self.key, 'code.py'), ('claude:two', 'other.py')):
+                script = f"""from pathlib import Path
+import sys
+from harness import work
+root = Path({str(self.vault)!r})
+workspace = Path({str(self.root)!r})
+work.begin(root, {key!r}, 'parallel', workspace, [{name!r}])
+print('ready', flush=True)
+sys.stdin.readline()
+(workspace / {name!r}).write_text({key!r})
+work.finish(root, {key!r}, 'parallel')
+"""
+                child = stack.enter_context(subprocess.Popen([sys.executable, '-c', script],
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+                children.append(child)
+            for child in children:
+                self.assertEqual(child.stdout.readline().strip(), 'ready')
+            for child in children:
+                child.stdin.write('go\n')
+                child.stdin.flush()
+            for child in children:
+                _, stderr = child.communicate(timeout=10)
+                self.assertEqual(child.returncode, 0, stderr)
+        self.task.write_text(self.task.read_text() + '\nBoth child processes completed; verify records')
+        for key, name in ((self.key, 'code.py'), ('claude:two', 'other.py')):
+            result = work.record(self.vault, key, 'wiki/log/result.md')
+            receipt = json.loads((self.vault / result['evidence']).read_text())
+            self.assertEqual(receipt['session'], key)
+            self.assertEqual(set(receipt['observations'][0]['changes']), {name})
+            self.assertFalse(receipt['observations'][0]['ambiguous'])

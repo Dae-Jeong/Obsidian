@@ -101,7 +101,7 @@ checkpoint 명령끼리는 POSIX lock으로 동시 실행을 막고, 새 기준�
   세션에는 다른 writer의 전역 revision 변화를 작업으로 부과하지 않습니다.
 - 중앙 vault에서 실행하는 순수 `uv run python -m harness ...` 또는 같은 Python
   모듈 명령은 자기 기록을 pending으로 만들지 않습니다. 허용 subcommand만 인정하고
-  정확한 `cd CENTRAL_ROOT &&` 접두어만 허용하며, 추가 shell 연결·redirection·치환·glob·tilde 확장이 있으면 이 예외를 적용하지 않습니다.
+  정확한 `cd CENTRAL_ROOT &&` 접두어와 순수 제어 명령끼리의 줄바꿈·`&&` 연결을 허용합니다. 각 명령을 전부 검사하며 일반 실행 명령·redirection·치환·glob·tilde 확장이 섞이면 예외를 적용하지 않습니다. 수정과 work record를 같은 일반 shell 호출에 섞지 않고 수정 호출 종료 후 별도의 순수 제어 호출로 기록합니다. 실행 중 호출을 reconcile하여 이 검사를 우회하지 않습니다.
 - Stop은 자기 세션의 작업 pending·Task 연결·미기록 변경을 검사합니다. SessionStart는
   같은 worktree의 미완료 작업을 보여 줍니다. 명시적 work reconcile은 실제 writer와
   파일 확인 후 호출 연결을 정리하되, 변경된 작업의 기록과 문서 검증 의무는 유지합니다.
@@ -130,9 +130,9 @@ record는 현재 Task와 실행 근거를 변경 관측에 연결합니다. stat
 - 프로젝트는 등록 root 또는 Git common directory로 식별하고 실제 worktree root를
   별도로 보관합니다. 다른 worktree의 파일 상태를 같은 작업 상태로 합치지 않습니다.
 - 코드 관측 범위는 해당 worktree의 Git tracked 파일과 ignore되지 않은 untracked
-  파일입니다. 파일 bytes·실행 권한·symlink의 링크 문자열을 해시로 비교합니다.
-  symlink 대상과 submodule 내부는 따라가지 않습니다. Git-ignored 중앙 문서는
-  기존 문서 검사와 checkpoint가 담당합니다. 비 Git 작업 공간은 코드 검사 지원
+  파일에 명시적 편집 도구가 지정한 코드 파일을 더한 범위입니다. 명시적 ignored 코드 대상도 전후 해시와 record 시 drift를 검사합니다. 범위를 알 수 없는 shell의 ignored 변경은 자동 관측하지 않습니다. 파일 bytes·실행 권한·symlink의 링크 문자열을 해시로 비교합니다.
+  symlink 대상과 submodule 내부는 따라가지 않습니다. 중앙 문서·Log는
+  기존 문서 검사와 checkpoint가 담당하며 코드 대상으로 중복 관측하지 않습니다. 비 Git 작업 공간은 코드 검사 지원
   대상으로 조용히 통과시키지 않고 명시적으로 진단합니다.
 - bind는 등록 프로젝트 안의 단일 Task를 확인하고 최초 Task 해시를 기록합니다.
   미기록 변경이 있는 연결은 다른 Task로 덮어쓸 수 없습니다. 완료된 기록과
@@ -147,7 +147,7 @@ record는 현재 Task와 실행 근거를 변경 관측에 연결합니다. stat
 - record는 변경 도구의 종료 관측 이후 Task 해시 갱신과 존재하는 실행 근거를 요구합니다. 기록은
   Task ID·경로·해시, worktree, 관측된 파일 해시와 귀속 한계를 연결합니다. Task를
   갱신하지 않았거나 근거가 없으면 실패합니다. 변경이 없으면 무의미한 기록을
-  만들지 않습니다. 상태·날짜 등 메타데이터만 바꿔서는 통과하지 않으며 기존 Task
+  만들지 않습니다. `recorded=0`은 `no_unrecorded_observations`와 관측 범위를 함께 반환하며, 파일 전체에 변경이 없었다는 증거가 아닙니다. 상태·날짜 등 메타데이터만 바꿔서는 통과하지 않으며 기존 Task
   계약의 결과·다음 행동 내용에 변화가 있어야 합니다. 이것도 내용의 진실성 증명은 아닙니다.
 - Stop은 자기 세션의 미기록 관측·미완료 호출을 검사합니다. 전역 문서 revision만
   달라졌다는 이유로 다른 세션의 코드를 자기 작업으로 기록시키지 않습니다.

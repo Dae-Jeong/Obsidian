@@ -247,35 +247,50 @@ def handle_documents(root, agent, payload, scoped=False, own_change=False):
 
 
 def control_command(root, cwd, command):
-    """Only pure calls to the central CLI; no shell evaluation is performed."""
-    if not isinstance(command, str):
+    """Recognize only central CLI batches; never evaluate shell input.
+
+    Newlines and && may join pure controls. Every segment must qualify;
+    mixed code/control scripts still receive an ordinary work observation.
+    """
+    if not isinstance(command, str) or any(c in command for c in '\r$`;|<>()*?[]{}~'):
         return False
-    if any(c in command for c in '\n\r$`;|<>()*?[]{}~'):
+    segments = [line.strip() for line in command.strip().split('\n') if line.strip()]
+    segments = [part.strip() for line in segments for part in line.split('&&')]
+    if not segments or any(not part for part in segments):
         return False
     try:
-        words = shlex.split(command)
+        commands = [shlex.split(part) for part in segments]
     except ValueError:
         return False
-    if len(words) > 3 and words[0] == 'cd' and words[2] == '&&':
-        if Path(words[1]).resolve() != root.resolve():
+    if commands[0][:1] == ['cd']:
+        if len(commands[0]) != 2 or Path(commands[0][1]).resolve() != root.resolve():
             return False
-        words = words[3:]
+        # Only the established cd ROOT && prefix changes the CLI location.
+        if '&&' not in command.split('\n', 1)[0]:
+            return False
+        commands = commands[1:]
     elif Path(cwd).resolve() != root.resolve():
         return False
-    if any('&' in word for word in words):
+    if not commands:
         return False
-    if words[:2] == ['uv', 'run']:
-        words = words[2:]
     interpreters = {'python', 'python3', str(root / '.venv/bin/python')}
-    if len(words) < 4 or words[0] not in interpreters or words[1:3] != ['-m', 'harness']:
-        return False
-    if words[3] == '--root':
-        if len(words) < 6 or Path(words[4]).resolve() != root.resolve():
+    for words in commands:
+        if any('&' in word for word in words):
             return False
-        words = words[:3] + words[5:]
-    if words[3] == 'work':
-        return len(words) > 4 and words[4] in {'bind', 'record', 'status', 'reconcile'}
-    return words[3] in {'context', 'search', 'index', 'snapshot', 'verify', 'check', 'checkpoint', 'structure', 'catalog'}
+        if words[:2] == ['uv', 'run']:
+            words = words[2:]
+        if len(words) < 4 or words[0] not in interpreters or words[1:3] != ['-m', 'harness']:
+            return False
+        if words[3] == '--root':
+            if len(words) < 6 or Path(words[4]).resolve() != root.resolve():
+                return False
+            words = words[:3] + words[5:]
+        if words[3] == 'work':
+            if len(words) <= 4 or words[4] not in {'bind', 'record', 'status', 'reconcile'}:
+                return False
+        elif words[3] not in {'context', 'search', 'index', 'snapshot', 'verify', 'check', 'checkpoint', 'structure', 'catalog', 'read'}:
+            return False
+    return True
 
 
 def paired_database(root):
@@ -375,7 +390,8 @@ def handle(root, agent, payload):
             if observes_work:
                 workspace = work.repository(cwd)
                 lexical = targets(payload, resolve=False)
-                relative = [str(p.relative_to(workspace)) for p in lexical if p.is_relative_to(workspace)] if lexical else None
+                relative = [str(p.relative_to(workspace)) for p in lexical
+                            if p.is_relative_to(workspace) and role(root, p) == 'outside'] if lexical else None
                 work.begin(root, key, tool, workspace, relative, on_begin=save_pair)
             else:
                 with closing(paired_database(root)) as db, db:

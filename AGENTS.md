@@ -9,3 +9,5 @@
 7. Use `uv run python -m harness search 'query'` for current retrieval. Select `--scope history` or `--scope sources` only when needed. Read the resulting owner and assess applicability.
 8. Keep personal content, logs, configuration, indexes and credentials out of public Git. Never force-add private paths.
 9. Preserve unrelated dirty work. The independent `orchestration/` submodule has its own AGENTS.md and README.md; do not fold its changes into the parent.
+
+10. For named project start, resume, or status requests from this vault, read [project-orchestrator](orchestration/skills/project-orchestrator/SKILL.md). It routes to existing project/Task owners. Product edits run in a session rooted at the product repo; changing a shell directory does not change harness session ownership.

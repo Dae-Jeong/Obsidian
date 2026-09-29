@@ -75,6 +75,20 @@ def manifest(workspace):
     return {name: file_hash(root, name) for name in names}
 
 
+def observation_manifest(workspace, selected=None):
+    """Git scope plus explicit file targets, including ignored code artifacts.
+
+    Unknown shell windows retain Git's exclusion boundary; do not scan ignored
+    trees (credentials, dependencies, caches) to guess what a command changed.
+    """
+    current = manifest(workspace)
+    if selected is not None:
+        root = repository(workspace)
+        for name in selected:
+            current[name] = file_hash(root, name)
+    return current
+
+
 def differences(before, after):
     return {name: {'before': before.get(name), 'after': after.get(name)}
             for name in sorted(before.keys() | after.keys())
@@ -162,7 +176,7 @@ def begin(root, key, tool, workspace, selected=None, on_begin=None):
         session = ensure_session(root, db, key, workspace)
         if db.execute('SELECT 1 FROM work_calls WHERE session=? AND tool=?', (key, tool)).fetchone():
             raise ValueError('Duplicate tool observation; reconcile the existing call')
-        before = manifest(workspace)
+        before = observation_manifest(workspace, selected)
         ambiguous = selected is None
         peers = db.execute("SELECT c.* FROM work_calls c JOIN work_sessions s ON s.id=c.session WHERE s.workspace=? AND c.state='pending'", (session['workspace'],)).fetchall()
         for peer in peers:
@@ -186,7 +200,8 @@ def finish(root, key, tool, reconciliation=None):
         if not call:
             raise ValueError('No matching pending code observation')
         session = db.execute('SELECT * FROM work_sessions WHERE id=?', (key,)).fetchone()
-        changes = differences(json.loads(call['before_state']), manifest(Path(session['workspace'])))
+        selected = json.loads(call['targets']) if call['targets'] is not None else None
+        changes = differences(json.loads(call['before_state']), observation_manifest(Path(session['workspace']), selected))
         if call['targets'] is not None:
             selected = set(json.loads(call['targets']))
             changes = {p: change for p, change in changes.items() if p in selected}
@@ -209,7 +224,7 @@ def reconcile(root, key, tool, reason):
             raise ValueError('Reconciliation requires an unfinished observation')
         if call['state'] == 'changed':
             session = db.execute('SELECT * FROM work_sessions WHERE id=?', (key,)).fetchone()
-            current = manifest(Path(session['workspace']))
+            current = observation_manifest(Path(session['workspace']), json.loads(call['changes']))
             inspected = {p: current.get(p) for p in json.loads(call['changes'])}
             db.execute('UPDATE work_calls SET reconciled_state=?,reconciliation=?,ambiguous=1,task_hash=?,handoff_hash=? WHERE id=?',
                        (json.dumps(inspected), reason, task_hash(root, session),
@@ -325,9 +340,12 @@ def record(root, key, evidence, reconciliation=None):
         session = db.execute('SELECT * FROM work_sessions WHERE id=?', (key,)).fetchone()
         calls = db.execute("SELECT * FROM work_calls WHERE session=? AND state!='recorded' ORDER BY id", (key,)).fetchall()
         if any(c['state'] == 'pending' for c in calls):
-            raise ValueError('Reconcile pending calls before recording work')
+            raise ValueError('Cannot record while calls are pending; finish the running tool, then run work record as a separate central CLI call. Reconcile only after confirming an interrupted writer has stopped.')
         if not calls:
-            return {'recorded': 0, 'evidence': None}
+            return {'recorded': 0, 'evidence': None,
+                    'reason': 'no_unrecorded_observations',
+                    'scope': 'Git tracked/unignored files and explicit code targets; unknown shell changes to ignored files are not observed',
+                    'verification': 'observation-state-only; not proof that no files changed'}
         if not session or not session['task']:
             raise ValueError('Bind a central Task before recording work')
         from harness.context import context
@@ -342,11 +360,11 @@ def record(root, key, evidence, reconciliation=None):
             raise ValueError('Task handoff content must change; metadata-only edits do not record work')
         if any(c['ambiguous'] for c in calls) and not (isinstance(reconciliation, str) and reconciliation.strip()):
             raise ValueError('Writer overlap requires explicit reconciliation findings')
-        actual = manifest(Path(session['workspace']))
         expected = {}
         for call in calls:
             expected.update(json.loads(call['reconciled_state']) if call['reconciled_state'] is not None
                             else {p: value['after'] for p, value in json.loads(call['changes']).items()})
+        actual = observation_manifest(Path(session['workspace']), expected)
         if any(actual.get(p) != value for p, value in expected.items()):
             raise ValueError('Observed files drifted; reconcile actual work before recording')
         payload = {'session': key, 'workspace': session['workspace'], 'project': session['project'],
@@ -361,7 +379,7 @@ def record(root, key, evidence, reconciliation=None):
         target = write_receipt(root, payload)
         if task_hash(root, session) != current_task:
             raise ValueError('Task drifted while recording; reconcile current handoff')
-        latest = manifest(Path(session['workspace']))
+        latest = observation_manifest(Path(session['workspace']), expected)
         if any(latest.get(p) != value for p, value in expected.items()):
             raise ValueError('Observed files drifted during recording; reconcile actual work')
         if evidence_hash(root, evidence) != source_hash:

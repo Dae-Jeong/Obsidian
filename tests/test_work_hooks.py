@@ -204,3 +204,41 @@ class WorkHookTests(unittest.TestCase):
         response = self.event('PostToolUse', name='Bash', data={'command': 'external-script'})
         self.assertIn('document-check', json.dumps(response))
         self.assertEqual(self.event('Stop')['decision'], 'block')
+
+
+    def test_pure_control_batch_does_not_observe_itself(self):
+        command = 'uv run python -m harness work status\nuv run python -m harness check'
+        self.event('PreToolUse', name='Bash', data={'command': command}, cwd=self.vault)
+        self.assertEqual(work.status(self.vault, 'codex:one')['issues'], [])
+        self.assertTrue(control_command(self.vault, self.root, f'cd {self.vault} && ' + command))
+        for suffix in ('\ntouch code.py', ' && touch code.py', '\ncd /tmp', '\npython -c "pass"'):
+            self.assertFalse(control_command(self.vault, self.vault, command + suffix))
+
+    def test_pure_record_control_does_not_hide_existing_pending_writer(self):
+        work.bind(self.vault, 'codex:one', self.root, 'example.work')
+        self.event('PreToolUse', tool='writer')
+        command = 'uv run python -m harness work record --agent codex --session one --evidence wiki/log/result.md\nuv run python -m harness check'
+        self.event('PreToolUse', tool='record', name='Bash', data={'command': command}, cwd=self.vault)
+        state = work.status(self.vault, 'codex:one')
+        self.assertEqual([c['tool'] for c in state['sessions'][0]['calls']], ['writer'])
+        with self.assertRaisesRegex(ValueError, 'pending'):
+            work.record(self.vault, 'codex:one', 'wiki/log/result.md')
+
+
+    def test_ignored_code_is_observed_but_central_document_is_not_code(self):
+        work.bind(self.vault, 'codex:one', self.root, 'example.work')
+        (self.root / '.gitignore').write_text('vault/\n.artifacts/\n')
+        ignored = self.root / '.artifacts/fixture.py'
+        ignored.parent.mkdir()
+        ignored.write_text('before')
+        self.event('PreToolUse', name='Write', data={'file_path': str(ignored)})
+        ignored.write_text('after')
+        self.event('PostToolUse', name='Write', data={'file_path': str(ignored)})
+        self.assertIn('work-unrecorded', work.status(self.vault, 'codex:one')['issues'])
+        snapshot(self.vault, [str(self.task.relative_to(self.vault))], 'Document-only handoff')
+        self.event('PreToolUse', tool='task', name='Write', data={'file_path': str(self.task)})
+        self.task.write_text(self.task.read_text().replace('Initial result', 'Ignored target verified; next done'))
+        self.event('PostToolUse', tool='task', name='Write', data={'file_path': str(self.task)})
+        result = work.record(self.vault, 'codex:one', 'wiki/log/result.md')
+        self.assertEqual(result['recorded'], 1)
+        self.assertEqual(work.status(self.vault, 'codex:one')['issues'], [])
