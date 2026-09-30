@@ -120,9 +120,10 @@ uv run python -m harness.install_hooks
 
 vault의 메인 세션은 Task 범위·worker 배정·결과 검토·다음 행동을 소유합니다. 제품 편집은 제품 repo에서 시작한 worker가 수행합니다. 절차는 [Main Session Orchestration](wiki/notes/agents/work-management-policy.md#main-session-orchestration), 흐름·명령·한계는 [감독 흐름 안내](docs/harness/document-workflow.md#supervised-orchestration)를 따릅니다.
 
-- 선택형 [compact scheduler](orchestration/docs/project-scheduler.md)는 수동으로 시작하는 `run`·`tick`과 조회 전용 `watch`를 제공합니다.
+- 선택형 [compact scheduler](orchestration/docs/project-scheduler.md)는 수동으로 시작하는 `run`·`tick`을 제공합니다. 조회 전용 `watch`는 대기·문제·진행·세션 네 구역을 `--project`로 걸러 보여 주고, 같은 데이터를 `--json`으로도 냅니다. Orca 없이도 동작합니다.
 - worker와 메인은 Task Markdown 항목을 질문·답변·막힘·완료로 참조하고, [Task 항목 참조 이벤트](orchestration/docs/scheduler-task-events.md)로 hash 검증·처리·ACK를 SQLite에 기록합니다.
-- 전달은 pull 방식입니다. 수신자가 활성 세션에서 `wait`·`claim`을 실행해야 처리됩니다. Markdown 수정만으로는 이벤트가 발행되지 않으며, idle 세션 깨우기와 승인 대기·중단을 자동 감지해 메인에 통지하는 hook은 없습니다.
+- 전달은 pull 방식입니다. 수신자가 활성 세션에서 `wait`·`claim`을 실행해야 처리됩니다. Markdown 수정만으로는 이벤트가 발행되지 않습니다. 수신 실행 주소가 `orca:<terminal handle>`이면 `ref publish --wake`로 유휴 terminal에 고정 문구를 한 번 보낼 수 있습니다. 이 wake는 best effort이며, 유휴 메인이 실제로 재개되는 흐름은 아직 검증하지 않았습니다. 승인 대기·중단을 자동 감지해 메인에 통지하는 hook은 없습니다.
+- `work bind`는 호출 세션의 `ORCA_TERMINAL_HANDLE`(또는 `--terminal`)을 함께 기록합니다. `watch`는 이 기록이 실제 Orca handle과 같을 때만 세션과 terminal을 연결합니다.
 - 일반 대화형 TUI CLI는 수동으로 참여할 수 있습니다. scheduler의 일반 TUI 실행 통합은 구현되지 않았습니다.
 - 실제 worker 왕복은 Claude·Kiro에서 확인했습니다. Codex worker는 준비 확인 실패로 prompt 전달 전에 중단되어 미검증입니다. 같은 검증의 Codex 메인은 이벤트를 수신하고 답변했습니다.
 

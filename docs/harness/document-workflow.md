@@ -293,7 +293,10 @@ section only connects the flow.
    and ask or report through the selected protocol. The main reviews the actual
    artifact and Task evidence before acceptance; a worker report is not acceptance.
 3. The optional [compact scheduler](../../orchestration/docs/project-scheduler.md) is
-   started manually with `tick` or `run`; `watch` is a read-only progress view.
+   started manually with `tick` or `run`. `watch` is a read-only overview of
+   waiting, problem, progress and session state, filterable with `--project` and
+   available as `--json`; it works without Orca and links a session to a terminal
+   only when `work bind` recorded that terminal (`ORCA_TERMINAL_HANDLE` or `--terminal`).
    [Assignment](../../orchestration/docs/scheduler-assignment.md) and
    [messaging](../../orchestration/docs/scheduler-messaging.md) define its
    attempt contracts.
@@ -305,9 +308,11 @@ section only connects the flow.
    not question resolution or Task completion.
 
 Limits: delivery is pull-based. The recipient must actively run `wait` or `claim`.
-Editing Markdown does not publish an event; publish each Task item explicitly. There
-is no idle-session wake-up and no hook that automatically detects approval waits or
-interruptions and notifies the main. A normal interactive TUI CLI can take part manually, but
+Editing Markdown does not publish an event; publish each Task item explicitly. For an
+`orca:<terminal handle>` recipient, `ref publish --wake` sends one fixed prompt only
+while the terminal is idle. This is best effort, and an idle main resuming through it
+has not been verified. No hook automatically detects approval waits or interruptions
+and notifies the main. A normal interactive TUI CLI can take part manually, but
 scheduler integration for normal TUI workers is not implemented.
 
 Verified scope: real Claude and Kiro workers completed the question → answer → ACK →
