@@ -181,6 +181,26 @@ changed 상태도 reconcile할 수 있습니다. 원래 changes는 유지하고 
 디렉터리 descriptor에 고정해 경로 교체로 다른 위치에 쓰지 않습니다. 이 검사는
 임의 writer 전체를 잠그거나 파일시스템 전체의 원자적 게시를 보장하지 않습니다.
 
+### 세션 terminal 연결
+
+`work_sessions`는 nullable `terminal`·`terminal_source` 열로 세션이 실행 중인
+terminal을 기록합니다. 두 열은 `work.database()`가 열이 없을 때만 `ALTER TABLE …
+ADD COLUMN`으로 추가하며, 테이블을 다시 만들거나 기존 행을 바꾸지 않습니다.
+
+```sh
+uv run python -m harness work bind /absolute/project/path --task TASK_ID --agent kiro --session SESSION_ID
+uv run python -m harness work bind /absolute/project/path --task TASK_ID --agent kiro --session SESSION_ID --terminal OPAQUE_ID
+uv run python -m harness work status --agent kiro --session SESSION_ID
+```
+
+- `--terminal ID`: 1–256자, 공백·제어 문자 없는 opaque 식별자를 그대로 기록하고 출처는 `explicit`입니다. Orca가 없는 환경의 수동 연결에 사용합니다.
+- 인자가 없고 호출 프로세스 환경에 `ORCA_TERMINAL_HANDLE`이 있으면 `orca:<handle>`을 출처 `env`로 기록합니다. 잘못된 handle은 bind를 실패시킵니다.
+- 둘 다 없으면 기존 값을 지우지 않고 유지합니다. 새 값이 주어진 rebind는 terminal을 갱신합니다. worktree 고정과 미기록 관측의 다른 Task rebind 금지는 그대로입니다.
+- bind 없이 `work begin`이나 hook 관측이 새 세션을 만들 때도 같은 환경 변수가 있으면 출처 `env`로 기록합니다. 이때 잘못된 값은 무시해 hook을 실패시키지 않으며, 기존 세션 행은 바꾸지 않습니다.
+- `work status` JSON의 각 세션에 `terminal`·`terminal_source`가 포함됩니다. 값이 `null`이면 terminal을 알 수 없다는 뜻입니다.
+
+한계: 환경 변수는 명령을 실행한 프로세스의 terminal입니다. 다른 세션을 대신 bind하면 잘못된 handle이 기록되므로 각 세션은 자기 자신만 bind합니다. 기록은 세션이 스스로 신고한 값이며 terminal 소유를 인증하지 않습니다. 이 변경 전에 생성된 세션은 새 값으로 다시 bind하기 전까지 `null`입니다. Codex·Claude hook 프로세스가 `ORCA_TERMINAL_HANDLE`을 상속하는지는 실제 런타임에서 확인하지 않았습니다. 프로세스 환경 탐색이나 CLI 내부 파일 읽기로 추정하지 않습니다.
+
 ## 근거
 
 확인일: 2026-09-27. 로컬 Codex CLI 0.157.1, Claude Code 2.1.282.

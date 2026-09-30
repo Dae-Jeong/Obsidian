@@ -43,6 +43,7 @@ def main():
     binding = actions.add_parser('bind')
     binding.add_argument('workspace', type=Path)
     binding.add_argument('--task', required=True)
+    binding.add_argument('--terminal', help='Opaque terminal ID of this session; defaults to orca:$ORCA_TERMINAL_HANDLE when set')
     recording = actions.add_parser('record')
     recording.add_argument('--evidence', required=True)
     recording.add_argument('--reconciliation')
@@ -76,7 +77,7 @@ def main():
                 raise ValueError('Specify both --agent and --session, or neither for workspace status')
             key = f'{args.agent}:{args.session}' if args.agent else None
             if args.work_command == 'bind':
-                result = work.bind(root, key, args.workspace, args.task)
+                result = work.bind(root, key, args.workspace, args.task, args.terminal)
             elif args.work_command == 'record':
                 result = work.record(root, key, args.evidence, args.reconciliation)
             elif args.work_command == 'reconcile':

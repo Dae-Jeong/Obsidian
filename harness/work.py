@@ -5,6 +5,7 @@ from contextlib import closing, ExitStack
 from datetime import datetime, timezone
 import os
 from pathlib import Path
+import sqlite3
 import stat
 import subprocess
 import uuid
@@ -100,12 +101,52 @@ def differences(before, after):
 def database(root):
     from harness.hooks import database as hook_database
     db = hook_database(root)
-    import sqlite3
     db.row_factory = sqlite3.Row
     db.execute('CREATE TABLE IF NOT EXISTS work_sessions (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, project TEXT NOT NULL, task TEXT, task_path TEXT, task_hash TEXT, handoff_hash TEXT)')
     db.execute('CREATE TABLE IF NOT EXISTS work_calls (id INTEGER PRIMARY KEY, session TEXT NOT NULL, tool TEXT NOT NULL, before_state TEXT NOT NULL, targets TEXT, task_hash TEXT, handoff_hash TEXT, state TEXT NOT NULL, changes TEXT, ambiguous INTEGER NOT NULL DEFAULT 0, reconciliation TEXT, reconciled_state TEXT, UNIQUE(session,tool))')
     db.commit()
+    # Additive, idempotent migration: add only missing nullable columns; never recreate.
+    for column in SESSION_COLUMNS:
+        if column not in {r['name'] for r in db.execute('PRAGMA table_info(work_sessions)')}:
+            try:
+                db.execute(f'ALTER TABLE work_sessions ADD COLUMN {column} TEXT')
+                db.commit()
+            except sqlite3.OperationalError as exc:
+                # A concurrent process may have added the same column first.
+                if 'duplicate column' not in str(exc):
+                    raise
     return db
+
+
+SESSION_COLUMNS = ('terminal', 'terminal_source')
+TERMINAL_ENV = 'ORCA_TERMINAL_HANDLE'
+TERMINAL_LIMIT = 256
+
+
+def valid_terminal(value):
+    return (isinstance(value, str) and 0 < len(value) <= TERMINAL_LIMIT
+            and value.isprintable() and not any(char.isspace() for char in value))
+
+
+def terminal_identity(explicit=None, strict=True):
+    """Return (terminal, source) from an explicit opaque ID or this process's Orca handle.
+
+    The value identifies the terminal of the calling process only; no process
+    scanning or CLI-internal inspection is performed. None means unknown.
+    """
+    if explicit is not None:
+        if not valid_terminal(explicit):
+            raise ValueError(f'--terminal must be 1-{TERMINAL_LIMIT} printable characters without whitespace')
+        return explicit, 'explicit'
+    handle = os.environ.get(TERMINAL_ENV)
+    if handle is None:
+        return None, None
+    value = 'orca:' + handle
+    if not valid_terminal(handle) or len(value) > TERMINAL_LIMIT:
+        if strict:
+            raise ValueError(f'{TERMINAL_ENV} is not a valid terminal handle; pass --terminal explicitly')
+        return None, None
+    return value, 'env'
 
 
 def identity(key):
@@ -134,7 +175,7 @@ def handoff_hash(root, path):
     return hashlib.sha256(json.dumps(values, sort_keys=True, default=str).encode()).hexdigest()
 
 
-def ensure_session(root, db, key, workspace):
+def ensure_session(root, db, key, workspace, terminal=None):
     from harness.context import context
     identity(key)
     workspace = repository(workspace)
@@ -144,25 +185,32 @@ def ensure_session(root, db, key, workspace):
             raise ValueError('A work session cannot silently change worktrees')
         return row
     owner = context(root, workspace)
-    db.execute('INSERT INTO work_sessions(id,workspace,project) VALUES (?,?,?)',
-               (key, str(workspace), owner['project_id']))
+    # A newly observed session (bind, CLI begin or hook) records its own Orca
+    # handle when present; invalid env values are ignored so hooks never fail.
+    terminal, source = terminal if terminal else terminal_identity(strict=False)
+    db.execute('INSERT INTO work_sessions(id,workspace,project,terminal,terminal_source) VALUES (?,?,?,?,?)',
+               (key, str(workspace), owner['project_id'], terminal, source))
     return db.execute('SELECT * FROM work_sessions WHERE id=?', (key,)).fetchone()
 
 
-def bind(root, key, workspace, task):
+def bind(root, key, workspace, task, terminal=None):
     from harness.context import context
     owner = context(root, Path(workspace), task)['tasks'][0]
     if owner['status'] in ('done', 'cancelled'):
         raise ValueError('Task must be active work before binding code changes')
+    value, source = terminal_identity(terminal)
     with closing(database(root)) as db, db:
         db.execute('BEGIN IMMEDIATE')
-        row = ensure_session(root, db, key, workspace)
+        row = ensure_session(root, db, key, workspace, (value, source) if value else None)
         if row['task'] and row['task'] != owner['id']:
             if db.execute("SELECT 1 FROM work_calls WHERE session=? AND state!='recorded'", (key,)).fetchone():
                 raise ValueError('Cannot rebind unfinished observations to another Task')
         if row['task'] != owner['id']:
             db.execute('UPDATE work_sessions SET task=?,task_path=?,task_hash=?,handoff_hash=? WHERE id=?',
                        (owner['id'], owner['path'], owner['sha256'], handoff_hash(root, owner['path']), key))
+        # Without a new value, keep any recorded terminal instead of erasing it.
+        if value and (row['terminal'], row['terminal_source']) != (value, source):
+            db.execute('UPDATE work_sessions SET terminal=?,terminal_source=? WHERE id=?', (value, source, key))
     return status(root, key)
 
 

@@ -413,6 +413,142 @@ class WorkRecordTests(unittest.TestCase):
         self.assertIn('both', json.loads(result.stderr)['error'])
 
 
+class WorkTerminalTests(unittest.TestCase):
+    """Session terminal linkage: explicit ID, own Orca handle, or unknown."""
+    setUp = WorkRecordTests.setUp
+    git = WorkRecordTests.git
+    begin = WorkRecordTests.begin
+
+    def env(self, handle=None):
+        from unittest.mock import patch
+        values = {k: v for k, v in os.environ.items() if k != work.TERMINAL_ENV}
+        if handle is not None:
+            values[work.TERMINAL_ENV] = handle
+        return patch.dict(os.environ, values, clear=True)
+
+    def bind(self, terminal=None, task='example.work'):
+        return work.bind(self.vault, self.key, self.root, task, terminal)['sessions'][0]
+
+    def link(self):
+        row = work.status(self.vault, self.key)['sessions'][0]
+        return row['terminal'], row['terminal_source']
+
+    def test_old_schema_migrates_idempotently_and_preserves_rows(self):
+        import sqlite3
+        from contextlib import closing
+        path = self.vault / '.local/harness/hook-state.sqlite'
+        with closing(sqlite3.connect(path)) as db, db:
+            db.execute('CREATE TABLE sessions (id TEXT PRIMARY KEY, revision TEXT NOT NULL, dirty INTEGER NOT NULL DEFAULT 0, retries INTEGER NOT NULL DEFAULT 0, failure TEXT, verdict TEXT, evidence TEXT)')
+            db.execute('CREATE TABLE work_sessions (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, project TEXT NOT NULL, task TEXT, task_path TEXT, task_hash TEXT, handoff_hash TEXT)')
+            db.execute('CREATE TABLE work_calls (id INTEGER PRIMARY KEY, session TEXT NOT NULL, tool TEXT NOT NULL, before_state TEXT NOT NULL, targets TEXT, task_hash TEXT, handoff_hash TEXT, state TEXT NOT NULL, changes TEXT, ambiguous INTEGER NOT NULL DEFAULT 0, reconciliation TEXT, reconciled_state TEXT, UNIQUE(session,tool))')
+            db.execute("INSERT INTO sessions(id,revision) VALUES ('s','r')")
+            db.execute("INSERT INTO work_sessions VALUES ('codex:old','/w','p','t','tp','th','hh')")
+            db.execute("INSERT INTO work_calls(session,tool,before_state,state) VALUES ('codex:old','x','{}','changed')")
+
+        def snapshot():
+            with closing(sqlite3.connect(path)) as db:
+                return {t: db.execute(f'SELECT * FROM {t} ORDER BY 1').fetchall()
+                        for t in ('sessions', 'work_sessions', 'work_calls')}, \
+                       [r[1] for r in db.execute('PRAGMA table_info(work_sessions)')]
+        before, _ = snapshot()
+        for _ in range(2):
+            work.database(self.vault).close()
+        after, columns = snapshot()
+        self.assertEqual(columns, ['id', 'workspace', 'project', 'task', 'task_path', 'task_hash',
+                                   'handoff_hash', 'terminal', 'terminal_source'])
+        self.assertEqual(after['sessions'], before['sessions'])
+        self.assertEqual(after['work_calls'], before['work_calls'])
+        self.assertEqual([row[:7] for row in after['work_sessions']], before['work_sessions'])
+        self.assertEqual([row[7:] for row in after['work_sessions']], [(None, None)])
+
+    def test_explicit_terminal_wins_over_env(self):
+        with self.env('term_env'):
+            row = self.bind('tmux:%3')
+        self.assertEqual((row['terminal'], row['terminal_source']), ('tmux:%3', 'explicit'))
+
+    def test_env_handle_is_recorded_with_orca_prefix(self):
+        with self.env('term_abc'):
+            row = self.bind()
+        self.assertEqual((row['terminal'], row['terminal_source']), ('orca:term_abc', 'env'))
+
+    def test_no_value_leaves_terminal_unknown_or_unchanged(self):
+        with self.env():
+            self.bind()
+            self.assertEqual(self.link(), (None, None))
+        with self.env('term_a'):
+            self.bind()
+        with self.env():
+            self.bind()
+        self.assertEqual(self.link(), ('orca:term_a', 'env'))
+
+    def test_rebind_updates_terminal_when_new_value_supplied(self):
+        with self.env('term_a'):
+            self.bind()
+            self.bind('manual-1')
+            self.assertEqual(self.link(), ('manual-1', 'explicit'))
+        with self.env('term_b'):
+            self.bind()
+        self.assertEqual(self.link(), ('orca:term_b', 'env'))
+        other = self.task.with_name('other.md')
+        other.write_text('---\nid: example.other\nstatus: active\n---\n# Other\n## Current Result\nR\n## Next Action\nN')
+        with self.env('term_c'):
+            row = self.bind(task='example.other')
+        self.assertEqual((row['task'], row['terminal']), ('example.other', 'orca:term_c'))
+
+    def test_invalid_terminal_is_rejected_without_creating_a_session(self):
+        for value in ('', 'a b', 'tab\there', 'x' * (work.TERMINAL_LIMIT + 1), 'nl\n'):
+            with self.env(), self.assertRaises(ValueError):
+                self.bind(value)
+        with self.env('bad handle'), self.assertRaisesRegex(ValueError, 'ORCA_TERMINAL_HANDLE'):
+            self.bind()
+        self.assertEqual(work.status(self.vault)['sessions'], [])
+
+    def test_existing_bind_rules_still_apply_with_terminal(self):
+        with self.env('term_a'):
+            self.bind()
+            self.begin()
+            other = self.task.with_name('other.md')
+            other.write_text('---\nid: example.other\nstatus: active\n---\n# Other')
+            with self.assertRaisesRegex(ValueError, 'unfinished'):
+                self.bind('manual', task='example.other')
+        self.assertEqual(self.link(), ('orca:term_a', 'env'))
+        elsewhere = self.root / 'elsewhere'
+        elsewhere.mkdir()
+        subprocess.run(['git', '-C', str(elsewhere), 'init', '-q'], check=True, env=git_environment())
+        with self.assertRaisesRegex(ValueError, 'worktrees'):
+            work.bind(self.vault, self.key, elsewhere, 'example.work', 'manual')
+
+    def test_session_created_by_observation_captures_own_handle(self):
+        with self.env('term_hook'):
+            self.begin()
+        self.assertEqual(self.link(), ('orca:term_hook', 'env'))
+        with self.env('bad handle'):
+            self.begin(tool='two', key='codex:two')
+        row = work.status(self.vault, 'codex:two')['sessions'][0]
+        self.assertEqual((row['terminal'], row['terminal_source']), (None, None))
+
+    def test_cli_bind_and_status_expose_terminal(self):
+        import sys
+        base = [sys.executable, '-m', 'harness', '--root', str(self.vault), 'work']
+        identity = ['--agent', 'codex', '--session', 'one']
+        env = {k: v for k, v in os.environ.items() if k != work.TERMINAL_ENV}
+        env[work.TERMINAL_ENV] = 'term_cli'
+        result = subprocess.run(base + ['bind', str(self.root), '--task', 'example.work'] + identity,
+                                capture_output=True, text=True, env=env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = subprocess.run(base + ['status'] + identity, capture_output=True, text=True, env=env)
+        session = json.loads(result.stdout)['sessions'][0]
+        self.assertEqual((session['terminal'], session['terminal_source']), ('orca:term_cli', 'env'))
+        result = subprocess.run(base + ['bind', str(self.root), '--task', 'example.work', '--terminal', 'pts/4'] + identity,
+                                capture_output=True, text=True, env=env)
+        session = json.loads(result.stdout)['sessions'][0]
+        self.assertEqual((session['terminal'], session['terminal_source']), ('pts/4', 'explicit'))
+        result = subprocess.run(base + ['bind', str(self.root), '--task', 'example.work', '--terminal', 'a b'] + identity,
+                                capture_output=True, text=True, env=env)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('--terminal', json.loads(result.stderr)['error'])
+
+
 class WorkRecoveryMatrixTests(unittest.TestCase):
     setUp = WorkRecordTests.setUp
     git = WorkRecordTests.git
